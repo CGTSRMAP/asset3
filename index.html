@@ -2549,12 +2549,12 @@ function masterRibbonHTML(it,q){
   return rows?`<details class="eq-master"><summary>Material master data</summary><div class="eq-master-grid">${rows}</div></details>`:"";
 }
 
-function makeKey(building,room){ return `${norm(building)||"Unassigned"}||${norm(room)}`; }
+function makeKey(building,room){ return `${(norm(building)||"Unassigned").toLowerCase()}||${norm(room).toLowerCase()}`; }
 function resolveRoomKeys(room,building){
   const r=norm(room); if(!r) return [];
   const b=norm(building);
   if(b){ const k=makeKey(b,r); return state.rooms[k] ? [k] : []; }
-  const matches=Object.entries(state.rooms).filter(([,rm])=>norm(rm.room)===r).map(([k])=>k);
+  const matches=Object.entries(state.rooms).filter(([,rm])=>norm(rm.room).toLowerCase()===r.toLowerCase()).map(([k])=>k);
   return matches.length ? matches : [makeKey("Unassigned",r)];
 }
 function ingest(d){
