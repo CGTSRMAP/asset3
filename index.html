@@ -1,0 +1,3126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Campus Inventory Management Tool</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+
+<style>
+  :root{
+    --ink:#1c1e17; --ink-soft:#3d4034; --muted:#6a6e5e; --faint:#9aa090;
+    --bg:#eef0ea; --panel:#ffffff; --line:#dadcd0; --line-soft:#e9ebe1;
+    --ribbon:#000000; --ribbon-line:#2b2b22;
+    --gold:#bd9a3c; --gold-bright:#d8b85a; --gold-deep:#8a6f22; --gold-wash:#faf3e0;
+    --dot:#46493a; --good:#3f6f4a;
+    --font-ui:Calibri, Arial, sans-serif;
+    --font-mono:Calibri, Arial, sans-serif;
+    --font-serif:Calibri, Arial, sans-serif;
+    --shadow:0 1px 2px rgba(28,30,23,.06),0 10px 30px rgba(28,30,23,.12);
+  }
+  *{box-sizing:border-box}
+  button,input,select,textarea,table{font-family:Calibri, Arial, sans-serif}
+  html,body{height:100%}
+  body{margin:0;font-family:Calibri, Arial, sans-serif;color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased}
+  .app{display:grid;grid-template-rows:auto 1fr;height:100dvh}
+
+  /* ---- top ribbon (branding) ---- */
+  .ribbon{
+    display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    background:var(--ribbon);border-bottom:2px solid var(--gold-deep);
+    padding:10px 20px;z-index:1200;
+  }
+  .ribbon .logo{height:46px;width:auto;display:block;flex:none}
+  .ribbon .rule{width:1px;align-self:stretch;background:var(--ribbon-line);margin:2px 0}
+  .ribbon .centre{display:flex;flex-direction:column;gap:1px;min-width:0}
+  .ribbon .centre .ey{
+    font-family:var(--font-mono);font-size:18px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold);
+  }
+  .ribbon .centre h1{
+    margin:0;font-family:var(--font-serif);font-weight:600;font-size:27px;letter-spacing:.01em;
+    color:#f3ecd6;line-height:1.05;
+  }
+  .ribbon .spacer{flex:1}
+  .ribbon .updated{
+    text-align:right;font-family:var(--font-mono);font-size:19px;color:#9c9783;line-height:1.5;white-space:nowrap;
+  }
+  .ribbon .updated b{color:var(--gold-bright);font-weight:500}
+  @media (max-width:680px){
+    .ribbon{gap:12px;padding:9px 14px}
+    .ribbon .rule{display:none}
+    .ribbon .centre h1{font-size:24px}
+    .ribbon .updated{width:100%;text-align:left}
+  }
+
+  /* ---- body grid ---- */
+  .stage{display:grid;grid-template-columns:var(--panel-w,430px) 8px 1fr;min-height:0}
+  @media (max-width:760px){.stage{grid-template-columns:1fr;grid-template-rows:auto 1fr}.panel-resizer{display:none}}
+
+  .panel{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;
+    animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
+  .panel-resizer{position:relative;background:linear-gradient(90deg,#f8f9f4,#e8eadf);border-right:1px solid var(--line);cursor:col-resize;z-index:1000;touch-action:none}
+  .panel-resizer::after{content:"";position:absolute;top:50%;left:50%;width:2px;height:46px;transform:translate(-50%,-50%);border-left:1px solid #bfc3b5;border-right:1px solid #bfc3b5;opacity:.75}
+  .panel-resizer:hover,.panel-resizer.dragging{background:var(--gold-wash)}
+  @media (max-width:760px){.panel{border-right:0;border-bottom:1px solid var(--line);max-height:48dvh}}
+  @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  .tool-head{display:flex;align-items:center;gap:10px;padding:14px 16px 8px}
+  .tool-head .eyebrow{font-family:var(--font-mono);font-size:19px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold-deep);font-weight:600}
+  .tool-head .spacer{flex:1}
+  .floor-pick{display:flex;align-items:center;gap:7px;font-size:19px;color:var(--muted)}
+  .selectors{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+  .floor-pick label{font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.08em}
+  select{font-family:var(--font-mono);font-size:20.5px;color:var(--ink);border:1px solid var(--line);background:#fff;
+    border-radius:7px;padding:5px 9px;cursor:pointer}
+  select:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+
+  .search{padding:4px 16px 12px}
+  .search-helper{margin:0 2px 9px;color:var(--ink-soft);font-size:21px;line-height:1.4}
+  .search-helper strong{display:block;color:var(--ink);font-size:22px;margin-bottom:2px}
+  .search .field{position:relative}
+  .search input{width:100%;font-family:var(--font-ui);font-size:23px;color:var(--ink);border:1px solid var(--line);
+    border-radius:10px;padding:12px 38px 12px 13px;background:#fbfcf9;transition:border-color .15s,box-shadow .15s,background .15s}
+  .search input::placeholder{color:var(--faint)}
+  .search input:focus{outline:none;border-color:var(--gold);background:#fff;box-shadow:0 0 0 3px rgba(189,154,60,.18)}
+  .search .clear{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:transparent;
+    color:var(--faint);font-size:26px;line-height:1;width:30px;height:30px;border-radius:7px;cursor:pointer;display:none}
+  .search .clear:hover{color:var(--ink);background:var(--line-soft)}
+  .search input:not(:placeholder-shown)+.clear{display:block}
+  .hint{margin:9px 2px 0;font-size:20px;color:var(--muted);line-height:1.5}
+  .hint b{font-family:var(--font-mono);font-weight:500;color:var(--ink-soft)}
+
+  .count{padding:10px 18px;font-family:var(--font-mono);font-size:19.5px;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--muted);border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);background:#fbfcf9}
+  .count b{color:var(--gold-deep)}
+
+  .results{overflow-y:auto;flex:1;min-height:0;padding:6px 0 16px}
+  .row{width:100%;text-align:left;border:0;background:transparent;cursor:pointer;display:flex;gap:11px;align-items:flex-start;flex-wrap:wrap;
+    padding:11px 18px;border-left:3px solid transparent;transition:background .12s,border-color .12s}
+  .row:hover{background:var(--gold-wash)}
+  .row:focus-visible{outline:none;background:var(--gold-wash);border-left-color:var(--gold)}
+  .row.active{background:var(--gold-wash);border-left-color:var(--gold)}
+  .row .code{font-family:var(--font-mono);font-weight:600;font-size:21px;color:var(--ink);background:#eef0e7;
+    border:1px solid var(--line);border-radius:6px;padding:3px 7px;white-space:nowrap}
+  .row.active .code{background:#fff;border-color:var(--gold);color:var(--gold-deep)}
+  .row .meta{min-width:0;flex:1}
+  .row .eq{font-size:21.5px;color:var(--ink-soft);line-height:1.35}
+  .row .eq mark{background:#f3e2ad;color:inherit;border-radius:3px;padding:0 2px}
+  .row .who,.row .sub{display:block;font-size:19.5px;color:var(--muted);margin-top:2px}
+  .row .who mark,.row .sub mark{background:#f3e2ad;color:var(--ink-soft);border-radius:3px;padding:0 2px}
+  .row .fl{align-self:flex-start;font-family:var(--font-mono);font-size:18px;letter-spacing:.04em;color:var(--muted);
+    background:#eef0e7;border:1px solid var(--line);border-radius:5px;padding:2px 6px;white-space:normal;max-width:100%;overflow-wrap:anywhere}
+
+  .room-result{border-left:3px solid transparent;border-bottom:1px solid var(--line-soft)}
+  .room-result.active{background:var(--gold-wash);border-left-color:var(--gold)}
+  .row{position:relative}
+  .row .chev{font-size:24px;color:var(--muted);margin-left:auto;transition:transform .16s}
+  .room-result.open .row .chev{transform:rotate(180deg)}
+  .room-equipment{display:none;padding:0 18px 12px 52px;background:#fff}
+  .room-result.open .room-equipment{display:block}
+  .mini-eq-card{border:1px solid var(--line);border-radius:10px;background:#fff;margin:8px 0;padding:10px 11px}
+  .mini-eq-title{font-weight:600;color:var(--ink);font-size:21.5px;margin-bottom:6px}
+  .mini-eq-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 10px;font-size:19.8px;color:var(--muted)}
+  .mini-eq-grid b{display:block;color:var(--ink-soft);font-weight:600}
+  .mini-eq-grid mark{background:#f3e2ad;color:inherit;border-radius:3px;padding:0 2px}
+
+  .eq-master{margin-top:9px;border:1px solid var(--line-soft);border-radius:9px;background:#fbfcf9;overflow:hidden}
+  .eq-master summary{cursor:pointer;padding:7px 9px;font-weight:600;color:var(--gold-deep);font-size:20.5px;list-style:none}
+  .eq-master summary::-webkit-details-marker{display:none}
+  .eq-master summary::after{content:"▾";float:right;color:var(--muted);transition:transform .16s}
+  .eq-master[open] summary::after{transform:rotate(180deg)}
+  .eq-master-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 10px;padding:0 9px 9px;font-size:19.8px;color:var(--muted)}
+  .eq-master-grid b{display:block;color:var(--ink-soft);font-weight:600}
+  .eq-doc-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+  @media (max-width:760px){.eq-master-grid{grid-template-columns:1fr}}
+
+
+  /* empty / prompt state */
+  .empty{padding:30px 22px;color:var(--muted);font-size:21.5px;line-height:1.6}
+  .empty .big{display:block;font-family:var(--font-serif);font-size:25px;color:var(--ink);margin-bottom:8px}
+  .empty b{color:var(--ink-soft);font-family:var(--font-mono);font-weight:500;font-size:20.5px}
+  .empty .ex{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px}
+  .empty .ex button{font:inherit;font-size:20px;color:var(--gold-deep);background:var(--gold-wash);
+    border:1px solid #ecdcae;border-radius:999px;padding:4px 11px;cursor:pointer}
+  .empty .ex button:hover{background:#f4e8c4}
+
+  footer{padding:10px 18px;border-top:1px solid var(--line-soft);font-size:19px;color:var(--faint);
+    font-family:var(--font-mono);letter-spacing:.03em}
+
+  .map-wrap{position:relative;min-height:0}
+  #map{position:absolute;inset:0;background:#edefe6}
+  .leaflet-container{font-family:var(--font-ui)}
+  .leaflet-control-attribution{font-size:18px}
+  .locate-ctl{background:#fff;border:1px solid var(--line);border-radius:9px;box-shadow:var(--shadow);cursor:pointer;
+    width:38px;height:38px;display:flex;align-items:center;justify-content:center;color:var(--gold-deep)}
+  .locate-ctl:hover{background:var(--gold-wash);color:var(--ink)}
+  .me span{position:absolute;left:50%;top:50%;width:15px;height:15px;margin:-7.5px 0 0 -7.5px;border-radius:50%;
+    background:#2b7cff;border:2.5px solid #fff;box-shadow:0 0 0 2px rgba(43,124,255,.45),0 1px 4px rgba(0,0,0,.4)}
+  .me span::after{content:"";position:absolute;left:50%;top:50%;width:15px;height:15px;margin:-7.5px 0 0 -7.5px;
+    border-radius:50%;border:2px solid #2b7cff;animation:ping 2s ease-out infinite}
+  @media (prefers-reduced-motion:reduce){.me span::after{animation:none;opacity:0}}
+
+  .leaflet-popup-content-wrapper{border-radius:12px;box-shadow:var(--shadow);padding:2px}
+  .leaflet-popup-content{margin:13px 15px;line-height:1.45}
+  .pop li small{display:block;color:#6b7280;font-size:19px;margin-top:2px}
+  .pop h3{margin:0 0 2px;font-size:21px;font-family:var(--font-mono);font-weight:600;color:var(--gold-deep)}
+  .pop .floor{font-size:19px;color:var(--muted);font-family:var(--font-mono);letter-spacing:.05em;text-transform:uppercase}
+  .pop h4{margin:10px 0 5px;font-size:18.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  .pop ul{margin:0;padding:0;list-style:none}
+  .pop li{font-size:21px;margin:3px 0;color:var(--ink-soft);display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+  .pop li .po{font-family:var(--font-mono);font-size:18.5px;color:var(--gold-deep);text-decoration:none;white-space:nowrap;
+    border:1px solid #ecdcae;background:var(--gold-wash);border-radius:5px;padding:1px 6px}
+  .pop li .po:hover{background:#f4e8c4}
+  .pop li .nopo{font-family:var(--font-mono);font-size:18px;color:var(--faint)}
+  .pop .contact{margin-top:10px;padding-top:9px;border-top:1px solid var(--line-soft);font-size:20.5px}
+  .pop .contact .name{font-weight:600;color:var(--ink)}
+  .pop .contact a{color:var(--gold-deep);text-decoration:none}
+  .pop .contact a:hover{text-decoration:underline}
+  .pop .none{font-size:20.5px;color:var(--muted);font-style:italic}
+
+  .room-tip{background:rgba(28,30,23,.92);color:#fff;border:0;border-radius:5px;font-family:var(--font-mono);
+    font-size:19px;font-weight:500;padding:2px 6px;box-shadow:none}
+  .room-tip::before{display:none}
+  .bldg-label{background:transparent;border:0;box-shadow:none;color:#6a5417;font-family:var(--font-serif);
+    font-weight:600;font-size:20px;letter-spacing:.02em;text-shadow:0 1px 2px rgba(255,255,255,.9),0 0 2px rgba(255,255,255,.9);padding:0}
+  .bldg-label::before{display:none}
+
+  .pulse{pointer-events:none}
+  .pulse span,.pulse span::after{position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;
+    border-radius:50%;border:2px solid var(--gold)}
+  .pulse span{animation:ping 1.8s ease-out infinite}
+  .pulse span::after{content:"";animation:ping 1.8s ease-out infinite .9s}
+  @keyframes ping{0%{transform:scale(.5);opacity:.9}80%,100%{transform:scale(3.4);opacity:0}}
+
+  .banner{display:none;align-items:flex-start;gap:10px;background:#fff8ea;border-bottom:1px solid #f1d9a6;
+    color:#7a5a12;padding:9px 18px;font-size:20.5px;line-height:1.4}
+  .banner.show{display:flex}
+  .banner b{color:#5e4409}
+
+  @media (prefers-reduced-motion:reduce){.panel{animation:none}.pulse span,.pulse span::after{animation:none;opacity:.5;transform:scale(2)}}
+
+  /* ---- right-side detail panel (admin) ---- */
+  .detail{position:absolute;top:12px;right:12px;bottom:12px;width:min(360px,calc(100% - 24px));
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+    z-index:1000;display:flex;flex-direction:column;overflow:hidden;
+    animation:slideIn .28s cubic-bezier(.2,.7,.2,1) both}
+  .detail[hidden]{display:none}
+  @keyframes slideIn{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
+  @media (max-width:760px){.detail{top:auto;left:12px;right:12px;bottom:12px;width:auto;max-height:62%}}
+  @media (prefers-reduced-motion:reduce){.detail{animation:none}}
+  .dt-head{display:flex;align-items:flex-start;gap:10px;padding:14px 14px 12px;border-bottom:1px solid var(--line-soft);background:#fbfcf9}
+  .dt-head h3{margin:0;font-family:var(--font-mono);font-weight:600;font-size:23px;color:var(--gold-deep)}
+  .dt-loc{margin-top:3px;font-size:19px;color:var(--muted);font-family:var(--font-mono);letter-spacing:.04em;text-transform:uppercase}
+  .dt-close{margin-left:auto;flex:none;border:1px solid var(--line);background:#fff;color:var(--muted);
+    width:30px;height:30px;border-radius:8px;font-size:26px;line-height:1;cursor:pointer}
+  .dt-close:hover{background:var(--gold-wash);color:var(--ink)}
+  .dt-body{padding:12px 14px 16px;overflow-y:auto;flex:1;min-height:0}
+  .dt-body h4{margin:6px 0 8px;font-size:18.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:600}
+  .dt-ct{color:var(--gold-deep);background:var(--gold-wash);border:1px solid #ecdcae;border-radius:999px;padding:0 7px;font-size:18px;margin-left:4px}
+  .dt-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+  .dt-item{border:1px solid var(--line);border-radius:10px;padding:10px 11px;background:#fff}
+  .dt-ename{font-size:22px;font-weight:600;color:var(--ink)}
+  .dt-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+  .dt-link{font-family:var(--font-mono);font-size:18.5px;color:var(--gold-deep);text-decoration:none;
+    border:1px solid #ecdcae;background:var(--gold-wash);border-radius:6px;padding:2px 8px}
+  .dt-link:hover{background:#f4e8c4}
+  .dt-specs{margin:9px 0 0;padding:0;display:flex;flex-direction:column;gap:0}
+  .dt-spec{display:flex;justify-content:space-between;gap:10px;font-size:20px;border-top:1px dashed var(--line-soft);padding:4px 0}
+  .dt-spec dt{color:var(--muted);font-family:var(--font-mono);font-size:18px;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap}
+  .dt-spec dd{margin:0;color:var(--ink-soft);text-align:right}
+  .dt-flag{font-family:var(--font-mono);font-size:17px;text-transform:uppercase;letter-spacing:.05em;color:#fff;background:#b4452f;border-radius:4px;padding:1px 5px;margin-left:6px}
+  .dt-contact{margin-top:14px;padding-top:12px;border-top:1px solid var(--line-soft)}
+  .dt-name{font-weight:600;color:var(--ink);font-size:21.5px}
+  .dt-line{font-size:20.5px;margin-top:3px}
+  .dt-contact a{color:var(--gold-deep);text-decoration:none}
+  .dt-contact a:hover{text-decoration:underline}
+  .dt-none{font-size:20.5px;color:var(--muted);font-style:italic;margin:4px 0 0}
+  .dt-none.sm{font-size:19.5px;margin-top:7px}
+  .modetag{font-family:var(--font-mono);font-size:18px;letter-spacing:.1em;text-transform:uppercase;
+    color:#fff;background:var(--gold-deep);border-radius:5px;padding:2px 7px;margin-left:8px;align-self:center}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="ribbon">
+    <img id="collegeLogo" class="logo" src="logo/logo.png" alt="College logo" />
+    <div class="rule"></div>
+    <div class="centre">
+      <span id="collegeName" class="ey">SRM University AP</span>
+      <h1 id="centreName">Inventory Management Tool</h1>
+    </div>
+    <div class="spacer"></div>
+    <div class="updated">Equipment inventory<br><b id="updated">Last updated —</b></div>
+  </div>
+
+  <div id="banner" class="banner"><span>⚠️</span>
+    <div><b>Demo mode.</b> The data files couldn't be loaded, so built-in sample data is shown.
+    Serve the folder over a web server (GitHub Pages, or <b>python -m http.server</b>) to read the live CSVs.</div>
+  </div>
+
+  <div class="stage">
+    <aside class="panel">
+      <div class="tool-head">
+        <span class="eyebrow">Equipment Finder</span>
+        <span class="spacer"></span>
+        <div class="selectors">
+          <div class="floor-pick"><label for="building">Building</label><select id="building"></select></div>
+          <div class="floor-pick"><label for="floor">Floor</label><select id="floor"></select></div>
+        </div>
+      </div>
+      <div class="search">
+        <div class="search-helper"><strong>Search Equipment, Faculty Cabin, Room location on Map </strong>Example: Microscope, Name of the Faculty, Room Number (JC305)</div>
+        <div class="field">
+          <input id="q" type="search" autocomplete="off" placeholder="Type search text" aria-label="Search text" />
+          <button id="clear" class="clear" aria-label="Clear search">&times;</button>
+        </div>
+        <div class="field" style="margin-top:8px">
+          <select id="searchMode" aria-label="What to search">
+            <option value="equipment">Equipment</option>
+            <option value="faculty">Faculty name</option>
+            <option value="room">Room number</option>
+          </select>
+        </div>
+        <p class="hint">Choose what to search. Room search highlights the room location; equipment search opens equipment details.</p>
+      </div>
+      <div class="count" id="count">Ready</div>
+      <div class="results" id="results"></div>
+      <footer id="foot">—</footer>
+    </aside>
+    <div class="panel-resizer" id="panelResizer" title="Drag to resize search panel" aria-hidden="true"></div>
+    <div class="map-wrap"><div id="map"></div><div id="detail" class="detail" hidden></div></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script>
+const FALLBACK = {
+"rooms": [
+{
+"room": "JC301",
+"floor": 3,
+"building": null,
+"lat": 16.463972902312825,
+"lng": 80.50794820257734
+},
+{
+"room": "JC302",
+"floor": 3,
+"building": null,
+"lat": 16.46397304119613,
+"lng": 80.50790367029984
+},
+{
+"room": "JC303",
+"floor": 3,
+"building": null,
+"lat": 16.463915822141423,
+"lng": 80.50792351289444
+},
+{
+"room": "JC304",
+"floor": 3,
+"building": null,
+"lat": 16.463856546433405,
+"lng": 80.50792317546103
+},
+{
+"room": "JC305",
+"floor": 3,
+"building": null,
+"lat": 16.46380501733052,
+"lng": 80.50792359402247
+},
+{
+"room": "JC306",
+"floor": 3,
+"building": null,
+"lat": 16.463742658534123,
+"lng": 80.5079223644074
+},
+{
+"room": "JC307",
+"floor": 3,
+"building": null,
+"lat": 16.463680012765558,
+"lng": 80.50792219983181
+},
+{
+"room": "JC308",
+"floor": 3,
+"building": null,
+"lat": 16.463614794221566,
+"lng": 80.50792142581477
+},
+{
+"room": "JC309",
+"floor": 3,
+"building": null,
+"lat": 16.463561489627384,
+"lng": 80.50792045266098
+},
+{
+"room": "JC310",
+"floor": 3,
+"building": null,
+"lat": 16.46358211493493,
+"lng": 80.50782552562109
+},
+{
+"room": "JC311",
+"floor": 3,
+"building": null,
+"lat": 16.46358260885826,
+"lng": 80.50773807709055
+},
+{
+"room": "JC312",
+"floor": 3,
+"building": null,
+"lat": 16.463671627049155,
+"lng": 80.50773952509434
+},
+{
+"room": "JC313",
+"floor": 3,
+"building": null,
+"lat": 16.46367397872031,
+"lng": 80.50782705425938
+},
+{
+"room": "JC314",
+"floor": 3,
+"building": null,
+"lat": 16.46374553313062,
+"lng": 80.50782317847644
+},
+{
+"room": "JC315",
+"floor": 3,
+"building": null,
+"lat": 16.463751162665215,
+"lng": 80.50774714351043
+},
+{
+"room": "JC318",
+"floor": 3,
+"building": null,
+"lat": 16.463952326667794,
+"lng": 80.50782527937211
+},
+{
+"room": "JC319",
+"floor": 3,
+"building": null,
+"lat": 16.463961398604386,
+"lng": 80.50771687867518
+},
+{
+"room": "JC320",
+"floor": null,
+"building": null,
+"lat": 16.464035408164833,
+"lng": 80.50775734036223
+},
+{
+"room": "JC401",
+"floor": 4,
+"building": null,
+"lat": 16.46391617521078,
+"lng": 80.50790055588749
+},
+{
+"room": "JC402",
+"floor": 4,
+"building": null,
+"lat": 16.46381686594441,
+"lng": 80.5078966699743
+},
+{
+"room": "JC403",
+"floor": 4,
+"building": null,
+"lat": 16.46374786600596,
+"lng": 80.50789203278849
+},
+{
+"room": "JC404",
+"floor": 4,
+"building": null,
+"lat": 16.463666055850773,
+"lng": 80.5078921303037
+},
+{
+"room": "JC405",
+"floor": 4,
+"building": null,
+"lat": 16.463577688452162,
+"lng": 80.50781692093905
+},
+{
+"room": "JC406",
+"floor": 4,
+"building": null,
+"lat": 16.463633579971034,
+"lng": 80.50781796733342
+},
+{
+"room": "JC407",
+"floor": 4,
+"building": null,
+"lat": 16.463689389545934,
+"lng": 80.50781230416095
+},
+{
+"room": "JC408",
+"floor": 4,
+"building": null,
+"lat": 16.463744495023725,
+"lng": 80.5078235233281
+},
+{
+"room": "JC409",
+"floor": 4,
+"building": null,
+"lat": 16.46379565232341,
+"lng": 80.50782738684767
+},
+{
+"room": "JC410",
+"floor": 4,
+"building": null,
+"lat": 16.463911578946004,
+"lng": 80.50779015836285
+},
+{
+"room": "JC411",
+"floor": 4,
+"building": null,
+"lat": 16.464028408908987,
+"lng": 80.50774812620827
+}
+],
+"equipment": [
+{
+"room": "JC301",
+"equipment": "Oscilloscope",
+"po": "https://drive.google.com/file/d/1PO_EXAMPLE_JC301_OSC/view?usp=sharing"
+},
+{
+"room": "JC301",
+"equipment": "Digital Multimeter",
+"po": ""
+},
+{
+"room": "JC301",
+"equipment": "Function Generator",
+"po": ""
+},
+{
+"room": "JC301",
+"equipment": "Soldering Station",
+"po": ""
+},
+{
+"room": "JC302",
+"equipment": "Desktop Computer",
+"po": ""
+},
+{
+"room": "JC302",
+"equipment": "Projector",
+"po": ""
+},
+{
+"room": "JC302",
+"equipment": "Network Switch",
+"po": ""
+},
+{
+"room": "JC303",
+"equipment": "3D Printer",
+"po": "https://drive.google.com/file/d/1PO_EXAMPLE_JC303_3DP/view?usp=sharing"
+},
+{
+"room": "JC303",
+"equipment": "Soldering Station",
+"po": ""
+},
+{
+"room": "JC303",
+"equipment": "Digital Multimeter",
+"po": ""
+},
+{
+"room": "JC303",
+"equipment": "Power Supply",
+"po": ""
+},
+{
+"room": "JC304",
+"equipment": "Microscope",
+"po": ""
+},
+{
+"room": "JC304",
+"equipment": "Centrifuge",
+"po": ""
+},
+{
+"room": "JC304",
+"equipment": "pH Meter",
+"po": ""
+},
+{
+"room": "JC305",
+"equipment": "Oscilloscope",
+"po": ""
+},
+{
+"room": "JC305",
+"equipment": "Logic Analyzer",
+"po": ""
+},
+{
+"room": "JC305",
+"equipment": "Function Generator",
+"po": ""
+},
+{
+"room": "JC305",
+"equipment": "Breadboard Set",
+"po": ""
+},
+{
+"room": "JC306",
+"equipment": "Desktop Computer",
+"po": ""
+},
+{
+"room": "JC306",
+"equipment": "Projector",
+"po": ""
+},
+{
+"room": "JC306",
+"equipment": "Arduino Kit",
+"po": ""
+},
+{
+"room": "JC306",
+"equipment": "Raspberry Pi",
+"po": ""
+},
+{
+"room": "JC307",
+"equipment": "Spectrophotometer",
+"po": "https://drive.google.com/file/d/1PO_EXAMPLE_JC307_SPEC/view?usp=sharing"
+},
+{
+"room": "JC307",
+"equipment": "Hot Plate",
+"po": ""
+},
+{
+"room": "JC307",
+"equipment": "Magnetic Stirrer",
+"po": ""
+},
+{
+"room": "JC307",
+"equipment": "pH Meter",
+"po": ""
+},
+{
+"room": "JC308",
+"equipment": "Laser Cutter",
+"po": ""
+},
+{
+"room": "JC308",
+"equipment": "3D Printer",
+"po": ""
+},
+{
+"room": "JC308",
+"equipment": "Vacuum Pump",
+"po": ""
+},
+{
+"room": "JC309",
+"equipment": "Workstation PC",
+"po": ""
+},
+{
+"room": "JC309",
+"equipment": "Network Switch",
+"po": ""
+},
+{
+"room": "JC309",
+"equipment": "Server Rack",
+"po": ""
+},
+{
+"room": "JC310",
+"equipment": "Digital Multimeter",
+"po": ""
+},
+{
+"room": "JC310",
+"equipment": "Power Supply",
+"po": ""
+},
+{
+"room": "JC310",
+"equipment": "Oscilloscope",
+"po": ""
+},
+{
+"room": "JC310",
+"equipment": "Soldering Station",
+"po": ""
+},
+{
+"room": "JC311",
+"equipment": "Microscope",
+"po": ""
+},
+{
+"room": "JC311",
+"equipment": "Centrifuge",
+"po": ""
+},
+{
+"room": "JC311",
+"equipment": "Spectrophotometer",
+"po": ""
+},
+{
+"room": "JC312",
+"equipment": "Arduino Kit",
+"po": ""
+},
+{
+"room": "JC312",
+"equipment": "Raspberry Pi",
+"po": ""
+},
+{
+"room": "JC312",
+"equipment": "Breadboard Set",
+"po": ""
+},
+{
+"room": "JC312",
+"equipment": "Logic Analyzer",
+"po": ""
+},
+{
+"room": "JC313",
+"equipment": "Projector",
+"po": ""
+},
+{
+"room": "JC313",
+"equipment": "Desktop Computer",
+"po": ""
+},
+{
+"room": "JC313",
+"equipment": "Document Camera",
+"po": ""
+},
+{
+"room": "JC314",
+"equipment": "CNC Machine",
+"po": ""
+},
+{
+"room": "JC314",
+"equipment": "Lathe Machine",
+"po": ""
+},
+{
+"room": "JC314",
+"equipment": "Vacuum Pump",
+"po": ""
+},
+{
+"room": "JC315",
+"equipment": "Function Generator",
+"po": ""
+},
+{
+"room": "JC315",
+"equipment": "Oscilloscope",
+"po": ""
+},
+{
+"room": "JC315",
+"equipment": "Power Supply",
+"po": ""
+},
+{
+"room": "JC315",
+"equipment": "Digital Multimeter",
+"po": ""
+},
+{
+"room": "JC318",
+"equipment": "pH Meter",
+"po": ""
+},
+{
+"room": "JC318",
+"equipment": "Hot Plate",
+"po": ""
+},
+{
+"room": "JC318",
+"equipment": "Magnetic Stirrer",
+"po": ""
+},
+{
+"room": "JC318",
+"equipment": "Centrifuge",
+"po": ""
+},
+{
+"room": "JC319",
+"equipment": "Server Rack",
+"po": ""
+},
+{
+"room": "JC319",
+"equipment": "Workstation PC",
+"po": ""
+},
+{
+"room": "JC319",
+"equipment": "Network Switch",
+"po": ""
+},
+{
+"room": "JC319",
+"equipment": "UPS",
+"po": ""
+},
+{
+"room": "JC320",
+"equipment": "3D Printer",
+"po": ""
+},
+{
+"room": "JC320",
+"equipment": "Laser Cutter",
+"po": ""
+},
+{
+"room": "JC320",
+"equipment": "Soldering Station",
+"po": ""
+},
+{
+"room": "JC320",
+"equipment": "Microscope",
+"po": ""
+},
+{
+"room": "JC401",
+"equipment": "Oscilloscope",
+"po": ""
+},
+{
+"room": "JC401",
+"equipment": "Power Supply",
+"po": "https://drive.google.com/file/d/1PO_EXAMPLE_JC401_PSU/view?usp=sharing"
+},
+{
+"room": "JC401",
+"equipment": "Function Generator",
+"po": ""
+},
+{
+"room": "JC401",
+"equipment": "Soldering Station",
+"po": ""
+},
+{
+"room": "JC402",
+"equipment": "Desktop Computer",
+"po": ""
+},
+{
+"room": "JC402",
+"equipment": "Projector",
+"po": ""
+},
+{
+"room": "JC402",
+"equipment": "Document Camera",
+"po": ""
+},
+{
+"room": "JC403",
+"equipment": "3D Printer",
+"po": ""
+},
+{
+"room": "JC403",
+"equipment": "Vacuum Pump",
+"po": ""
+},
+{
+"room": "JC403",
+"equipment": "Digital Multimeter",
+"po": ""
+},
+{
+"room": "JC404",
+"equipment": "Microscope",
+"po": ""
+},
+{
+"room": "JC404",
+"equipment": "Centrifuge",
+"po": ""
+},
+{
+"room": "JC404",
+"equipment": "Incubator",
+"po": ""
+},
+{
+"room": "JC405",
+"equipment": "Spectrophotometer",
+"po": ""
+},
+{
+"room": "JC405",
+"equipment": "Hot Plate",
+"po": ""
+},
+{
+"room": "JC405",
+"equipment": "Magnetic Stirrer",
+"po": ""
+},
+{
+"room": "JC405",
+"equipment": "pH Meter",
+"po": ""
+},
+{
+"room": "JC406",
+"equipment": "Workstation PC",
+"po": ""
+},
+{
+"room": "JC406",
+"equipment": "Network Switch",
+"po": ""
+},
+{
+"room": "JC406",
+"equipment": "Server Rack",
+"po": "https://drive.google.com/file/d/1PO_EXAMPLE_JC406_RACK/view?usp=sharing"
+},
+{
+"room": "JC407",
+"equipment": "Arduino Kit",
+"po": ""
+},
+{
+"room": "JC407",
+"equipment": "Raspberry Pi",
+"po": ""
+},
+{
+"room": "JC407",
+"equipment": "Breadboard Set",
+"po": ""
+},
+{
+"room": "JC407",
+"equipment": "Logic Analyzer",
+"po": ""
+},
+{
+"room": "JC408",
+"equipment": "Laser Cutter",
+"po": "https://drive.google.com/file/d/1PO_EXAMPLE_JC408_LASER/view?usp=sharing"
+},
+{
+"room": "JC408",
+"equipment": "3D Printer",
+"po": ""
+},
+{
+"room": "JC408",
+"equipment": "CNC Machine",
+"po": ""
+},
+{
+"room": "JC409",
+"equipment": "Oscilloscope",
+"po": ""
+},
+{
+"room": "JC409",
+"equipment": "Digital Multimeter",
+"po": ""
+},
+{
+"room": "JC409",
+"equipment": "Power Supply",
+"po": ""
+},
+{
+"room": "JC410",
+"equipment": "Projector",
+"po": ""
+},
+{
+"room": "JC410",
+"equipment": "Desktop Computer",
+"po": ""
+},
+{
+"room": "JC410",
+"equipment": "UPS",
+"po": ""
+},
+{
+"room": "JC410",
+"equipment": "Network Switch",
+"po": ""
+},
+{
+"room": "JC411",
+"equipment": "Lathe Machine",
+"po": ""
+},
+{
+"room": "JC411",
+"equipment": "Vacuum Pump",
+"po": ""
+},
+{
+"room": "JC411",
+"equipment": "Soldering Station",
+"po": ""
+}
+],
+"contacts": [
+{
+"room": "JC301",
+"inCharge": "Dr. A. Sharma",
+"mobile": "+91-90000-00001",
+"email": "incharge.jc301@example.edu"
+},
+{
+"room": "JC302",
+"inCharge": "Dr. B. Verma",
+"mobile": "+91-90000-00002",
+"email": "incharge.jc302@example.edu"
+},
+{
+"room": "JC303",
+"inCharge": "Dr. C. Nair",
+"mobile": "+91-90000-00003",
+"email": "incharge.jc303@example.edu"
+},
+{
+"room": "JC304",
+"inCharge": "Dr. D. Iyer",
+"mobile": "+91-90000-00004",
+"email": "incharge.jc304@example.edu"
+},
+{
+"room": "JC305",
+"inCharge": "Dr. E. Rao",
+"mobile": "+91-90000-00005",
+"email": "incharge.jc305@example.edu"
+},
+{
+"room": "JC306",
+"inCharge": "Dr. F. Gupta",
+"mobile": "+91-90000-00006",
+"email": "incharge.jc306@example.edu"
+},
+{
+"room": "JC307",
+"inCharge": "Dr. G. Menon",
+"mobile": "+91-90000-00007",
+"email": "incharge.jc307@example.edu"
+},
+{
+"room": "JC308",
+"inCharge": "Dr. H. Reddy",
+"mobile": "+91-90000-00008",
+"email": "incharge.jc308@example.edu"
+},
+{
+"room": "JC309",
+"inCharge": "Dr. I. Bose",
+"mobile": "+91-90000-00009",
+"email": "incharge.jc309@example.edu"
+},
+{
+"room": "JC310",
+"inCharge": "Dr. J. Das",
+"mobile": "+91-90000-00010",
+"email": "incharge.jc310@example.edu"
+},
+{
+"room": "JC311",
+"inCharge": "Dr. K. Pillai",
+"mobile": "+91-90000-00011",
+"email": "incharge.jc311@example.edu"
+},
+{
+"room": "JC312",
+"inCharge": "Dr. L. Joshi",
+"mobile": "+91-90000-00012",
+"email": "incharge.jc312@example.edu"
+},
+{
+"room": "JC313",
+"inCharge": "Dr. M. Kulkarni",
+"mobile": "+91-90000-00013",
+"email": "incharge.jc313@example.edu"
+},
+{
+"room": "JC314",
+"inCharge": "Dr. N. Shetty",
+"mobile": "+91-90000-00014",
+"email": "incharge.jc314@example.edu"
+},
+{
+"room": "JC315",
+"inCharge": "Dr. O. Banerjee",
+"mobile": "+91-90000-00015",
+"email": "incharge.jc315@example.edu"
+},
+{
+"room": "JC318",
+"inCharge": "Dr. P. Mehta",
+"mobile": "+91-90000-00018",
+"email": "incharge.jc318@example.edu"
+},
+{
+"room": "JC319",
+"inCharge": "Dr. Q. Saxena",
+"mobile": "+91-90000-00019",
+"email": "incharge.jc319@example.edu"
+},
+{
+"room": "JC320",
+"inCharge": "Dr. R. Pillai",
+"mobile": "+91-90000-00020",
+"email": "incharge.jc320@example.edu"
+},
+{
+"room": "JC401",
+"inCharge": "Dr. S. Krishnan",
+"mobile": "+91-90000-00401",
+"email": "incharge.jc401@example.edu"
+},
+{
+"room": "JC402",
+"inCharge": "Dr. T. Bhat",
+"mobile": "+91-90000-00402",
+"email": "incharge.jc402@example.edu"
+},
+{
+"room": "JC403",
+"inCharge": "Dr. U. Chandra",
+"mobile": "+91-90000-00403",
+"email": "incharge.jc403@example.edu"
+},
+{
+"room": "JC404",
+"inCharge": "Dr. V. Patel",
+"mobile": "+91-90000-00404",
+"email": "incharge.jc404@example.edu"
+},
+{
+"room": "JC405",
+"inCharge": "Dr. W. Naidu",
+"mobile": "+91-90000-00405",
+"email": "incharge.jc405@example.edu"
+},
+{
+"room": "JC406",
+"inCharge": "Dr. X. Ghosh",
+"mobile": "+91-90000-00406",
+"email": "incharge.jc406@example.edu"
+},
+{
+"room": "JC407",
+"inCharge": "Dr. Y. Raman",
+"mobile": "+91-90000-00407",
+"email": "incharge.jc407@example.edu"
+},
+{
+"room": "JC408",
+"inCharge": "Dr. Z. Fernandes",
+"mobile": "+91-90000-00408",
+"email": "incharge.jc408@example.edu"
+},
+{
+"room": "JC409",
+"inCharge": "Dr. A. Kapoor",
+"mobile": "+91-90000-00409",
+"email": "incharge.jc409@example.edu"
+},
+{
+"room": "JC410",
+"inCharge": "Dr. B. Mishra",
+"mobile": "+91-90000-00410",
+"email": "incharge.jc410@example.edu"
+},
+{
+"room": "JC411",
+"inCharge": "Dr. C. Rao",
+"mobile": "+91-90000-00411",
+"email": "incharge.jc411@example.edu"
+}
+],
+"buildings": {
+"type": "FeatureCollection",
+"name": "buildings",
+"crs": {
+"type": "name",
+"properties": {
+"name": "urn:ogc:def:crs:OGC:1.3:CRS84"
+}
+},
+"features": [
+{
+"type": "Feature",
+"properties": {
+"Id": 1,
+"Building Name": "Narmadha"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5079501,
+16.4661676
+],
+[
+80.5084595,
+16.4661634
+],
+[
+80.50846,
+16.4660053
+],
+[
+80.5084271,
+16.466005
+],
+[
+80.508427,
+16.4660099
+],
+[
+80.5079837,
+16.4660123
+],
+[
+80.5079838,
+16.4660084
+],
+[
+80.507948,
+16.4660081
+],
+[
+80.5079501,
+16.4661676
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 2,
+"Building Name": "Yamuna"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5079495,
+16.466482
+],
+[
+80.5084588,
+16.4664778
+],
+[
+80.5084593,
+16.4663197
+],
+[
+80.5084265,
+16.4663194
+],
+[
+80.5084264,
+16.4663243
+],
+[
+80.5079831,
+16.4663267
+],
+[
+80.5079832,
+16.4663228
+],
+[
+80.5079474,
+16.4663224
+],
+[
+80.5079495,
+16.466482
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 3,
+"Building Name": "Yamuna"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5079495,
+16.466482
+],
+[
+80.5084588,
+16.4664778
+],
+[
+80.5084593,
+16.4663197
+],
+[
+80.5084265,
+16.4663194
+],
+[
+80.5084264,
+16.4663243
+],
+[
+80.5079831,
+16.4663267
+],
+[
+80.5079832,
+16.4663228
+],
+[
+80.5079474,
+16.4663224
+],
+[
+80.5079495,
+16.466482
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 4,
+"Building Name": "Godavari"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5071593,
+16.4661371
+],
+[
+80.5076686,
+16.466133
+],
+[
+80.5076691,
+16.4659748
+],
+[
+80.5076363,
+16.4659745
+],
+[
+80.5076362,
+16.4659795
+],
+[
+80.5071929,
+16.4659818
+],
+[
+80.507193,
+16.465978
+],
+[
+80.5071572,
+16.4659776
+],
+[
+80.5071593,
+16.4661371
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 5,
+"Building Name": "Krishna"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.507156,
+16.4658251
+],
+[
+80.5076653,
+16.4658209
+],
+[
+80.5076658,
+16.4656628
+],
+[
+80.507633,
+16.4656625
+],
+[
+80.5076329,
+16.4656674
+],
+[
+80.5071896,
+16.4656698
+],
+[
+80.5071897,
+16.4656659
+],
+[
+80.5071539,
+16.4656655
+],
+[
+80.507156,
+16.4658251
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 6,
+"Building Name": "Kaveri"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5071563,
+16.4664846
+],
+[
+80.5076679,
+16.4664817
+],
+[
+80.5076687,
+16.466285
+],
+[
+80.5076345,
+16.4662858
+],
+[
+80.5076343,
+16.4662933
+],
+[
+80.5074373,
+16.4662959
+],
+[
+80.5071892,
+16.4662984
+],
+[
+80.5071891,
+16.4662944
+],
+[
+80.507156,
+16.4662953
+],
+[
+80.5071563,
+16.4664846
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 7,
+"Building Name": "office"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5071526,
+16.4655683
+],
+[
+80.5073582,
+16.4655673
+],
+[
+80.5073577,
+16.4652032
+],
+[
+80.507151,
+16.4652026
+],
+[
+80.5071526,
+16.4655683
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 8,
+"Building Name": "Annapurna Mess"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5082275,
+16.465901
+],
+[
+80.5082288,
+16.4658597
+],
+[
+80.5082351,
+16.4656593
+],
+[
+80.5082513,
+16.4656189
+],
+[
+80.5082776,
+16.4655553
+],
+[
+80.5082838,
+16.4655457
+],
+[
+80.5082239,
+16.4655029
+],
+[
+80.5082651,
+16.4654487
+],
+[
+80.508325,
+16.4654917
+],
+[
+80.5084402,
+16.4653444
+],
+[
+80.5082619,
+16.4652136
+],
+[
+80.5081877,
+16.4653087
+],
+[
+80.5081066,
+16.4654315
+],
+[
+80.5080985,
+16.4654258
+],
+[
+80.5079984,
+16.4655592
+],
+[
+80.5080633,
+16.4655889
+],
+[
+80.5080492,
+16.46564
+],
+[
+80.5079922,
+16.4656283
+],
+[
+80.5080128,
+16.4657526
+],
+[
+80.508044,
+16.4659195
+],
+[
+80.5082275,
+16.465901
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 9,
+"Building Name": "V Block"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5071515,
+16.4650986
+],
+[
+80.5077944,
+16.4650956
+],
+[
+80.5079017,
+16.4650949
+],
+[
+80.5079144,
+16.4645582
+],
+[
+80.5078004,
+16.4645565
+],
+[
+80.5071467,
+16.4645603
+],
+[
+80.5071515,
+16.4650986
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 10,
+"Building Name": "JC BOSE Block"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5076992,
+16.4641651
+],
+[
+80.507968,
+16.4641643
+],
+[
+80.5079684,
+16.4638132
+],
+[
+80.5079721,
+16.463478
+],
+[
+80.5079147,
+16.4634788
+],
+[
+80.5079143,
+16.4634478
+],
+[
+80.5078435,
+16.4634483
+],
+[
+80.5078438,
+16.4634764
+],
+[
+80.5076992,
+16.4634764
+],
+[
+80.5076992,
+16.4641651
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 11,
+"Building Name": "X Lab"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5076313,
+16.4640597
+],
+[
+80.5076316,
+16.4639993
+],
+[
+80.5076336,
+16.463566
+],
+[
+80.507608,
+16.4635651
+],
+[
+80.5076088,
+16.4634613
+],
+[
+80.5073932,
+16.4634617
+],
+[
+80.5073935,
+16.4634404
+],
+[
+80.5073499,
+16.4634404
+],
+[
+80.5073497,
+16.463461
+],
+[
+80.5072025,
+16.4634613
+],
+[
+80.5072015,
+16.4635731
+],
+[
+80.5072772,
+16.4635731
+],
+[
+80.5072764,
+16.4636134
+],
+[
+80.5072766,
+16.463732
+],
+[
+80.5072015,
+16.4637321
+],
+[
+80.5072005,
+16.464038
+],
+[
+80.507201,
+16.4641967
+],
+[
+80.507379,
+16.4641977
+],
+[
+80.5076039,
+16.4641969
+],
+[
+80.5076038,
+16.4641118
+],
+[
+80.5076037,
+16.4640599
+],
+[
+80.5076313,
+16.4640597
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 12,
+"Building Name": "Office"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5082672,
+16.4641576
+],
+[
+80.508471,
+16.4641574
+],
+[
+80.5084733,
+16.464045
+],
+[
+80.5082661,
+16.4640432
+],
+[
+80.5082672,
+16.4641576
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 13,
+"Building Name": "Office"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5081151,
+16.4639541
+],
+[
+80.5084654,
+16.4639563
+],
+[
+80.5084656,
+16.4639545
+],
+[
+80.5084919,
+16.4639541
+],
+[
+80.5084922,
+16.463927
+],
+[
+80.5084925,
+16.463892
+],
+[
+80.5084894,
+16.463892
+],
+[
+80.5084894,
+16.4638965
+],
+[
+80.5084631,
+16.4638962
+],
+[
+80.5084623,
+16.4638461
+],
+[
+80.5084623,
+16.4638244
+],
+[
+80.5081136,
+16.4638216
+],
+[
+80.5081151,
+16.4639541
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 14,
+"Building Name": "Vedavathi"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5066067,
+16.46437
+],
+[
+80.5068734,
+16.464368
+],
+[
+80.5068759,
+16.4638774
+],
+[
+80.5063672,
+16.4638805
+],
+[
+80.5063685,
+16.4641748
+],
+[
+80.5063681,
+16.4643712
+],
+[
+80.5065151,
+16.4643704
+],
+[
+80.5065142,
+16.4640416
+],
+[
+80.5067191,
+16.4640432
+],
+[
+80.5067196,
+16.4642244
+],
+[
+80.5066063,
+16.4642261
+],
+[
+80.5066067,
+16.46437
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 15,
+"Building Name": "Ganga"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5063655,
+16.4637189
+],
+[
+80.506874,
+16.463717
+],
+[
+80.5068753,
+16.4632302
+],
+[
+80.5063662,
+16.4632283
+],
+[
+80.5063658,
+16.4634885
+],
+[
+80.5065171,
+16.4634882
+],
+[
+80.5065186,
+16.4633735
+],
+[
+80.5067213,
+16.4633737
+],
+[
+80.5067221,
+16.4635704
+],
+[
+80.5063637,
+16.4635733
+],
+[
+80.5063655,
+16.4637189
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 16,
+"Building Name": "SR Block"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5067592,
+16.4629998
+],
+[
+80.5068916,
+16.4629998
+],
+[
+80.5068883,
+16.4625498
+],
+[
+80.5068215,
+16.4625502
+],
+[
+80.5068227,
+16.4624414
+],
+[
+80.5068907,
+16.4624427
+],
+[
+80.5068973,
+16.4619942
+],
+[
+80.5067641,
+16.4619926
+],
+[
+80.5067638,
+16.462061
+],
+[
+80.5066541,
+16.4620602
+],
+[
+80.5066537,
+16.461993
+],
+[
+80.5065266,
+16.4619898
+],
+[
+80.5065246,
+16.4622199
+],
+[
+80.5065246,
+16.4624422
+],
+[
+80.5065938,
+16.4624427
+],
+[
+80.5065946,
+16.4625481
+],
+[
+80.5065234,
+16.462549
+],
+[
+80.5065222,
+16.4626418
+],
+[
+80.5063686,
+16.4626418
+],
+[
+80.5063682,
+16.462766
+],
+[
+80.5065189,
+16.4627685
+],
+[
+80.5065224,
+16.4627686
+],
+[
+80.5065227,
+16.4628745
+],
+[
+80.5063674,
+16.4628748
+],
+[
+80.5063686,
+16.4629986
+],
+[
+80.5066497,
+16.4629995
+],
+[
+80.5066494,
+16.4629294
+],
+[
+80.5067588,
+16.4629306
+],
+[
+80.5067592,
+16.4629998
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 17,
+"Building Name": null
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5080417,
+16.4663264
+],
+[
+80.5081391,
+16.4663258
+],
+[
+80.5081391,
+16.4661661
+],
+[
+80.5080412,
+16.4661669
+],
+[
+80.5080417,
+16.4663264
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 18,
+"Building Name": null
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.507487,
+16.4662952
+],
+[
+80.5075844,
+16.466294
+],
+[
+80.5075835,
+16.4661337
+],
+[
+80.5074852,
+16.4661345
+],
+[
+80.507487,
+16.4662952
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 19,
+"Building Name": null
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.507581,
+16.4659798
+],
+[
+80.5075799,
+16.4658216
+],
+[
+80.5074829,
+16.4658224
+],
+[
+80.507484,
+16.4659803
+],
+[
+80.507581,
+16.4659798
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 20,
+"Building Name": "CV Raman"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5060563,
+16.4619879
+],
+[
+80.5060629,
+16.4616739
+],
+[
+80.5052733,
+16.4616798
+],
+[
+80.5052809,
+16.4619486
+],
+[
+80.5052801,
+16.4619897
+],
+[
+80.5060563,
+16.4619879
+]
+]
+]
+]
+}
+},
+{
+"type": "Feature",
+"properties": {
+"Id": 30,
+"Building Name": "Homi J Baba Block"
+},
+"geometry": {
+"type": "MultiPolygon",
+"coordinates": [
+[
+[
+[
+80.5080686,
+16.4650964
+],
+[
+80.5084565,
+16.4650947
+],
+[
+80.5084583,
+16.4645542
+],
+[
+80.5080784,
+16.4645518
+],
+[
+80.5080686,
+16.4650964
+]
+]
+]
+]
+}
+}
+]
+}
+};
+const BASE = {"greenery":{"type":"FeatureCollection","name":"greenery","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508243,16.465852],[80.508279,16.465832],[80.50837,16.465854],[80.508416,16.465809],[80.5084,16.46574],[80.508416,16.465657],[80.508291,16.465566],[80.508247,16.465667],[80.508245,16.465791],[80.508243,16.465852]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508255,16.465929],[80.508487,16.465927],[80.508486,16.465785],[80.508484,16.465625],[80.508486,16.465486],[80.508486,16.465376],[80.508452,16.465353],[80.508445,16.465365],[80.508381,16.465447],[80.508412,16.465466],[80.50842,16.465557],[80.508432,16.465652],[80.508423,16.465693],[80.508415,16.465733],[80.508443,16.465732],[80.508474,16.465817],[80.508423,16.465866],[80.508388,16.4659],[80.50829,16.465891],[80.50827,16.465894],[80.508242,16.465874],[80.508255,16.465929]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507677,16.465501],[80.507706,16.465501],[80.507705,16.465474],[80.507683,16.465474],[80.507677,16.465483],[80.507677,16.465501]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507717,16.4655],[80.507729,16.465474],[80.507713,16.465475],[80.507713,16.4655],[80.507717,16.4655]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507726,16.4655],[80.507748,16.4655],[80.507748,16.465476],[80.507737,16.465475],[80.507726,16.4655]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507754,16.4655],[80.507764,16.4655],[80.507776,16.465475],[80.507753,16.465475],[80.507754,16.4655]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507776,16.4655],[80.507786,16.4655],[80.507786,16.465475],[80.507776,16.4655]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507794,16.465502],[80.507829,16.465503],[80.507827,16.465495],[80.507826,16.465475],[80.507794,16.465476],[80.507794,16.465502]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507837,16.465503],[80.507865,16.465502],[80.507864,16.465474],[80.507834,16.465475],[80.507835,16.465496],[80.507837,16.465503]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507881,16.465574],[80.507902,16.465574],[80.507903,16.465547],[80.507874,16.465548],[80.507874,16.465567],[80.507881,16.465574]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507682,16.465576],[80.507705,16.465576],[80.507706,16.465549],[80.507687,16.465549],[80.507678,16.465555],[80.507678,16.465569],[80.507682,16.465576]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507776,16.465575],[80.507762,16.465548],[80.507754,16.465548],[80.507754,16.465576],[80.507776,16.465575]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507784,16.465576],[80.507785,16.465576],[80.507785,16.465548],[80.507771,16.465548],[80.507784,16.465576]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507879,16.465483],[80.507903,16.465489],[80.507903,16.465474],[80.507875,16.465474],[80.507879,16.465483]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507874,16.465466],[80.507903,16.465466],[80.507903,16.465458],[80.507873,16.465432],[80.507874,16.465466]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507873,16.46542],[80.507903,16.465445],[80.507903,16.465422],[80.507873,16.465407],[80.507873,16.46542]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507873,16.465398],[80.507903,16.465412],[80.507903,16.465397],[80.507873,16.465398]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507873,16.465389],[80.507902,16.465388],[80.507901,16.465369],[80.507873,16.465381],[80.507873,16.465389]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507874,16.465373],[80.507902,16.46536],[80.507902,16.465358],[80.507874,16.465358],[80.507874,16.465373]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507873,16.465351],[80.507901,16.465351],[80.5079,16.465316],[80.507883,16.46533],[80.507881,16.465342],[80.507873,16.465343],[80.507873,16.465351]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507874,16.465333],[80.507886,16.465284],[80.507872,16.465284],[80.507874,16.465333]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507887,16.465314],[80.507901,16.465304],[80.5079,16.465285],[80.507894,16.465285],[80.507887,16.465314]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507834,16.465312],[80.507847,16.465312],[80.507835,16.465282],[80.507834,16.465312]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507855,16.465313],[80.507864,16.465312],[80.507865,16.465285],[80.507845,16.465285],[80.507855,16.465313]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507793,16.465312],[80.507827,16.465312],[80.507827,16.465285],[80.507795,16.465285],[80.507793,16.465312]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507786,16.465312],[80.507788,16.465286],[80.507756,16.465286],[80.507756,16.465312],[80.507786,16.465312]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507688,16.465467],[80.507705,16.465467],[80.507705,16.465455],[80.507688,16.465467]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507678,16.465469],[80.507683,16.46546],[80.507704,16.465446],[80.507705,16.46542],[80.5077,16.465425],[80.507694,16.465431],[80.507692,16.465433],[80.507687,16.465435],[80.507682,16.465437],[80.507677,16.465438],[80.507678,16.465469]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507677,16.465429],[80.507684,16.465427],[80.507689,16.465426],[80.507695,16.465419],[80.507705,16.465411],[80.507705,16.465399],[80.507676,16.4654],[80.507677,16.465429]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507677,16.465382],[80.507706,16.465389],[80.507705,16.465361],[80.507677,16.465361],[80.507677,16.465382]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507678,16.465353],[80.507705,16.465353],[80.507705,16.465343],[80.507704,16.465341],[80.507704,16.465339],[80.507702,16.465337],[80.507696,16.465333],[80.507691,16.46533],[80.507687,16.465327],[80.50768,16.465322],[80.507677,16.465321],[80.507677,16.465332],[80.507678,16.465353]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507679,16.465314],[80.507705,16.465314],[80.507705,16.465291],[80.507705,16.465286],[80.507677,16.465286],[80.507677,16.465312],[80.507679,16.465314]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507692,16.465322],[80.507705,16.465331],[80.507705,16.465322],[80.507692,16.465322]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507823,16.46523],[80.507822,16.465205],[80.507791,16.465205],[80.507791,16.465236],[80.507818,16.465236],[80.507823,16.46523]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507676,16.465222],[80.507692,16.465237],[80.507707,16.465237],[80.507707,16.465207],[80.507676,16.465208],[80.507676,16.465222]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507714,16.465312],[80.507745,16.465312],[80.507738,16.465303],[80.507713,16.465299],[80.507714,16.465312]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507748,16.465303],[80.507749,16.465286],[80.507733,16.465286],[80.50774,16.465292],[80.507741,16.465292],[80.50774,16.465294],[80.507748,16.465303]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507953,16.465466],[80.507984,16.465465],[80.507984,16.465458],[80.507952,16.465445],[80.507953,16.465466]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507984,16.465449],[80.507984,16.465434],[80.507953,16.465435],[80.507984,16.465449]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50799,16.465391],[80.508026,16.465391],[80.508026,16.465375],[80.507993,16.46539],[80.50799,16.465391]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507989,16.465381],[80.507995,16.465382],[80.508025,16.465368],[80.508026,16.465357],[80.507989,16.465357],[80.507989,16.465381]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507946,16.46535],[80.507982,16.465349],[80.507982,16.465321],[80.507971,16.465328],[80.507955,16.465341],[80.507951,16.465344],[80.507946,16.46535]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507952,16.46526],[80.507954,16.465258],[80.507962,16.465251],[80.507973,16.465244],[80.507951,16.465244],[80.507952,16.46526]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507989,16.465235],[80.508023,16.465214],[80.508022,16.465204],[80.507988,16.465204],[80.507989,16.465235]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508084,16.465286],[80.508128,16.465278],[80.508143,16.465258],[80.508088,16.465258],[80.508083,16.465268],[80.508084,16.465286]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508148,16.465238],[80.508162,16.465238],[80.508188,16.4652],[80.508147,16.465201],[80.508148,16.465238]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508065,16.465917],[80.508044,16.465919],[80.508038,16.465889],[80.508021,16.465799],[80.508011,16.465743],[80.508003,16.465694],[80.507992,16.465628],[80.507925,16.465621],[80.507917,16.465643],[80.507957,16.465856],[80.507967,16.465907],[80.50797,16.465918],[80.50797,16.465921],[80.507973,16.465923],[80.507976,16.465926],[80.507979,16.465928],[80.507984,16.465929],[80.507997,16.46593],[80.508025,16.465929],[80.508065,16.465928],[80.508065,16.465917]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507999,16.465559],[80.508099,16.465426],[80.508107,16.465431],[80.508131,16.465394],[80.508165,16.465344],[80.508169,16.465338],[80.508172,16.465332],[80.508176,16.465326],[80.508239,16.465244],[80.508262,16.465214],[80.508272,16.465221],[80.508288,16.465201],[80.508298,16.465189],[80.508276,16.465189],[80.508209,16.465188],[80.508202,16.465191],[80.50811,16.465313],[80.508053,16.465386],[80.508024,16.465425],[80.507956,16.465513],[80.507952,16.465519],[80.507951,16.465525],[80.507951,16.46553],[80.507952,16.465535],[80.507954,16.465539],[80.507975,16.465548],[80.507999,16.465559]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508392,16.46519],[80.508485,16.465313],[80.508495,16.465311],[80.508505,16.465303],[80.508509,16.465286],[80.508509,16.465238],[80.508505,16.465224],[80.508501,16.465217],[80.508498,16.465212],[80.508493,16.465207],[80.508487,16.465202],[80.508479,16.465197],[80.508468,16.465193],[80.508463,16.465191],[80.508432,16.465191],[80.508392,16.46519]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508089,16.465096],[80.508088,16.465109],[80.508133,16.465109],[80.508323,16.46511],[80.508438,16.465112],[80.508479,16.465111],[80.508481,16.465065],[80.508457,16.465065],[80.508456,16.465095],[80.508089,16.465096]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508431,16.464402],[80.508432,16.464437],[80.508438,16.464442],[80.508452,16.464442],[80.508461,16.46444],[80.508474,16.464434],[80.508484,16.464427],[80.508492,16.46442],[80.5085,16.464411],[80.508506,16.464402],[80.50851,16.464393],[80.508511,16.464384],[80.508511,16.464375],[80.508509,16.464367],[80.508505,16.464359],[80.508501,16.464353],[80.508448,16.464352],[80.508387,16.464352],[80.508298,16.464352],[80.508214,16.464351],[80.508119,16.464352],[80.508108,16.464364],[80.508101,16.464376],[80.508099,16.464383],[80.508098,16.464393],[80.508099,16.464405],[80.508104,16.464423],[80.508109,16.46443],[80.508115,16.464437],[80.508122,16.464443],[80.508144,16.464443],[80.508166,16.464443],[80.508171,16.464443],[80.508175,16.464442],[80.508179,16.464438],[80.508181,16.464433],[80.508181,16.464425],[80.508181,16.464399],[80.508217,16.464398],[80.508256,16.464398],[80.508293,16.464398],[80.508335,16.464398],[80.50838,16.464398],[80.508411,16.464398],[80.508427,16.464398],[80.508431,16.464402]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507976,16.464396],[80.507976,16.464422],[80.507977,16.464428],[80.50798,16.464434],[80.507983,16.464438],[80.507989,16.464441],[80.507994,16.464442],[80.507997,16.464443],[80.508003,16.464442],[80.508009,16.464439],[80.508012,16.464436],[80.508016,16.464432],[80.508017,16.464429],[80.508018,16.464423],[80.508018,16.464418],[80.508017,16.464362],[80.508016,16.464358],[80.508013,16.464353],[80.50801,16.46435],[80.508006,16.464348],[80.508,16.464345],[80.507995,16.464345],[80.507989,16.464346],[80.507983,16.46435],[80.50798,16.464352],[80.507978,16.464356],[80.507977,16.464359],[80.507975,16.464365],[80.507976,16.464396]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50738,16.464401],[80.50742,16.4644],[80.50748,16.464399],[80.507513,16.464399],[80.507547,16.4644],[80.507568,16.4644],[80.507571,16.4644],[80.507575,16.464402],[80.507577,16.464405],[80.507579,16.464409],[80.507579,16.464413],[80.507579,16.464421],[80.50758,16.464431],[80.507582,16.464435],[80.507586,16.464439],[80.507592,16.464441],[80.50761,16.464441],[80.507617,16.464437],[80.507618,16.464434],[80.507619,16.464429],[80.507619,16.464417],[80.50762,16.464409],[80.507622,16.464404],[80.507624,16.464401],[80.507629,16.464398],[80.507635,16.464397],[80.507643,16.464397],[80.507702,16.464398],[80.50781,16.4644],[80.507813,16.464434],[80.507823,16.464444],[80.507871,16.464442],[80.507881,16.464432],[80.507887,16.464423],[80.50789,16.464415],[80.507892,16.464408],[80.507894,16.464398],[80.507894,16.464392],[80.507894,16.46438],[80.507893,16.464372],[80.507891,16.464363],[80.507887,16.464352],[80.507516,16.46435],[80.507315,16.464351],[80.507334,16.464329],[80.5073,16.46433],[80.507234,16.46433],[80.507186,16.46433],[80.507172,16.464331],[80.507162,16.464334],[80.507157,16.464337],[80.507149,16.464342],[80.507143,16.464348],[80.507139,16.464354],[80.507137,16.464358],[80.507133,16.464367],[80.507131,16.464375],[80.507131,16.464383],[80.507131,16.464395],[80.507133,16.464403],[80.507136,16.46441],[80.50714,16.464416],[80.507146,16.464424],[80.507153,16.464429],[80.507168,16.464437],[80.50718,16.464441],[80.507232,16.464441],[80.507309,16.464442],[80.50735,16.464442],[80.50736,16.464439],[80.507368,16.464436],[80.507372,16.464429],[80.507375,16.46442],[80.507378,16.464407],[80.50738,16.464401]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507,16.46651],[80.507003,16.466518],[80.507015,16.466528],[80.507027,16.466531],[80.507042,16.466531],[80.507056,16.466528],[80.507064,16.466522],[80.50707,16.466515],[80.507071,16.466507],[80.507071,16.466461],[80.507069,16.466396],[80.507068,16.465999],[80.507063,16.465808],[80.507062,16.46538],[80.506989,16.46538],[80.507,16.46651]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50699,16.465361],[80.507063,16.465359],[80.507062,16.465273],[80.507061,16.464969],[80.507061,16.464619],[80.507061,16.464575],[80.507061,16.464557],[80.50706,16.464552],[80.507056,16.464544],[80.507048,16.464536],[80.507041,16.464532],[80.507032,16.464528],[80.507021,16.464528],[80.507009,16.464531],[80.506999,16.464538],[80.506995,16.464543],[80.506992,16.464549],[80.50699,16.464554],[80.506989,16.46456],[80.506989,16.465228],[80.50699,16.465361]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506321,16.463033],[80.506351,16.463033],[80.506352,16.463024],[80.50635,16.463021],[80.506349,16.46302],[80.506349,16.463019],[80.50635,16.463017],[80.506352,16.463015],[80.506351,16.463012],[80.506352,16.46299],[80.506353,16.462908],[80.506352,16.462864],[80.506353,16.462826],[80.506322,16.462826],[80.506321,16.462995],[80.506321,16.463033]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506322,16.462816],[80.506352,16.462817],[80.506352,16.462803],[80.506349,16.462803],[80.506347,16.462801],[80.506346,16.4628],[80.506346,16.462798],[80.506347,16.462797],[80.506348,16.462796],[80.506351,16.462796],[80.506353,16.462796],[80.506353,16.46277],[80.506354,16.462653],[80.506354,16.462601],[80.506352,16.462599],[80.506352,16.462597],[80.506352,16.462596],[80.506354,16.462594],[80.506354,16.462592],[80.506354,16.462576],[80.506354,16.46254],[80.506323,16.46254],[80.506322,16.462747],[80.506322,16.462816]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506323,16.462531],[80.506354,16.462531],[80.506355,16.462434],[80.506356,16.462331],[80.506359,16.462063],[80.506325,16.462062],[80.506323,16.462531]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506326,16.462054],[80.506358,16.462054],[80.506359,16.462008],[80.506369,16.462007],[80.50637,16.461955],[80.506326,16.461954],[80.506326,16.462],[80.506326,16.462054]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506526,16.462011],[80.506527,16.46199],[80.506654,16.461993],[80.506654,16.46206],[80.506685,16.46206],[80.506686,16.461956],[80.506488,16.461955],[80.50638,16.461955],[80.50638,16.462011],[80.506526,16.462011]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506764,16.462061],[80.506764,16.461993],[80.506897,16.461994],[80.506896,16.462095],[80.506895,16.462175],[80.506925,16.462175],[80.506925,16.461958],[80.506889,16.461957],[80.506742,16.461958],[80.506742,16.46201],[80.506741,16.462061],[80.506764,16.462061]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506327,16.461927],[80.506377,16.461927],[80.506378,16.461871],[80.506354,16.461871],[80.506345,16.461871],[80.50634,16.461872],[80.506335,16.461875],[80.506331,16.461879],[80.506329,16.461883],[80.506327,16.46189],[80.506327,16.461912],[80.506327,16.461927]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506383,16.461927],[80.506388,16.461917],[80.506399,16.461898],[80.506436,16.461898],[80.506453,16.461927],[80.506581,16.461928],[80.506599,16.4619],[80.506637,16.461901],[80.506653,16.461929],[80.506686,16.46193],[80.506687,16.461874],[80.506547,16.461872],[80.506531,16.461903],[80.506495,16.461902],[80.50648,16.461872],[80.506384,16.461871],[80.506383,16.461927]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506742,16.46193],[80.506881,16.46193],[80.506882,16.461874],[80.506846,16.461874],[80.506829,16.461905],[80.506792,16.461905],[80.506779,16.461874],[80.506742,16.461873],[80.506742,16.46193]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506887,16.46193],[80.506924,16.46193],[80.506925,16.461899],[80.506925,16.461891],[80.506923,16.461885],[80.506918,16.46188],[80.506914,16.461877],[80.506909,16.461875],[80.506887,16.461874],[80.506887,16.46193]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506992,16.46319],[80.506998,16.4632],[80.507007,16.463205],[80.50702,16.463209],[80.507033,16.46321],[80.507043,16.463207],[80.507052,16.4632],[80.507059,16.463189],[80.507061,16.463185],[80.507061,16.463172],[80.507062,16.463096],[80.507063,16.46303],[80.506989,16.463029],[80.506987,16.46316],[80.506987,16.463175],[80.506989,16.46318],[80.506992,16.46319]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506989,16.463022],[80.507062,16.463021],[80.507069,16.462363],[80.506992,16.462361],[80.50699,16.462765],[80.506989,16.463022]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506993,16.462322],[80.507066,16.462323],[80.50707,16.462182],[80.507071,16.461987],[80.507071,16.461919],[80.507071,16.461897],[80.507069,16.461885],[80.507062,16.46188],[80.507054,16.461877],[80.507041,16.461876],[80.507027,16.461875],[80.507013,16.461879],[80.507005,16.461884],[80.506999,16.461894],[80.506995,16.461906],[80.506993,16.4622],[80.506993,16.462322]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507061,16.464224],[80.50706,16.464101],[80.507058,16.463869],[80.507058,16.463854],[80.507052,16.463841],[80.507043,16.463828],[80.507029,16.463823],[80.507018,16.463823],[80.507003,16.463829],[80.506995,16.463837],[80.506991,16.463851],[80.506987,16.463872],[80.506983,16.464224],[80.507061,16.464224]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50703,16.463774],[80.507041,16.46377],[80.507052,16.463763],[80.507059,16.463749],[80.507062,16.463739],[80.507063,16.463723],[80.507061,16.463366],[80.507061,16.463307],[80.507056,16.463292],[80.507046,16.463283],[80.507036,16.463277],[80.507025,16.463275],[80.507013,16.463278],[80.507007,16.46328],[80.506999,16.463286],[80.506992,16.463295],[80.506988,16.463306],[80.506986,16.463315],[80.506989,16.463719],[80.506989,16.463742],[80.506991,16.463753],[80.506997,16.463761],[80.507007,16.463771],[80.507019,16.463773],[80.50703,16.463774]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507182,16.464216],[80.507183,16.464092],[80.507184,16.463735],[80.507145,16.463734],[80.507141,16.463735],[80.507136,16.463738],[80.507133,16.463741],[80.507131,16.463745],[80.507131,16.464057],[80.50713,16.464107],[80.50713,16.464155],[80.50713,16.464189],[80.50713,16.464215],[80.507131,16.464225],[80.507182,16.464226],[80.507182,16.464216]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507184,16.463573],[80.507183,16.463478],[80.507183,16.463462],[80.507187,16.463461],[80.50719,16.463461],[80.50719,16.463429],[80.507148,16.46343],[80.507143,16.463432],[80.507138,16.463435],[80.507134,16.463439],[80.507131,16.463444],[80.507132,16.463453],[80.507132,16.463474],[80.507133,16.463572],[80.507184,16.463573]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507202,16.463461],[80.50721,16.463461],[80.50735,16.463461],[80.50735,16.46344],[80.507394,16.46344],[80.507393,16.463462],[80.507609,16.463461],[80.507609,16.463462],[80.50764,16.463462],[80.507641,16.463432],[80.50762,16.463431],[80.507525,16.463431],[80.507275,16.46343],[80.507196,16.46343],[80.507196,16.463456],[80.507196,16.463463],[80.507202,16.463463],[80.507202,16.463461]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507715,16.465465],[80.507822,16.465465],[80.507822,16.465461],[80.507821,16.465457],[80.507819,16.465453],[80.507816,16.46545],[80.507812,16.465447],[80.507809,16.465447],[80.50781,16.46545],[80.507802,16.46545],[80.50779,16.465451],[80.507786,16.465449],[80.50778,16.465446],[80.507779,16.465443],[80.507777,16.465439],[80.507774,16.465438],[80.507771,16.465437],[80.507767,16.465437],[80.50776,16.465437],[80.50775,16.46544],[80.507744,16.465441],[80.507738,16.46544],[80.507734,16.465438],[80.50773,16.465434],[80.507726,16.465429],[80.507722,16.465424],[80.507724,16.465423],[80.507722,16.465417],[80.507721,16.465412],[80.50772,16.465407],[80.507721,16.465404],[80.50772,16.465403],[80.507717,16.4654],[80.507715,16.465399],[80.507715,16.465451],[80.507715,16.465465]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507836,16.465465],[80.507863,16.465465],[80.507863,16.4654],[80.507863,16.465399],[80.507857,16.465399],[80.507853,16.465412],[80.507853,16.465413],[80.507855,16.465414],[80.507851,16.465424],[80.507848,16.46543],[80.507844,16.465437],[80.50784,16.465442],[80.507836,16.465448],[80.507835,16.465453],[80.507835,16.465462],[80.507835,16.465465],[80.507836,16.465465]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507796,16.465322],[80.507796,16.465328],[80.507799,16.465334],[80.507805,16.465338],[80.507815,16.46534],[80.507821,16.465345],[80.507827,16.465356],[80.507828,16.465366],[80.507831,16.4654],[80.507863,16.465386],[80.507863,16.465322],[80.507796,16.465322]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507757,16.46537],[80.507759,16.465367],[80.507762,16.465364],[80.507761,16.465362],[80.507771,16.465353],[80.50778,16.465337],[80.507782,16.465322],[80.507716,16.465323],[80.507716,16.465364],[80.507716,16.465386],[80.507718,16.465388],[80.507724,16.465391],[80.50773,16.465389],[80.507735,16.465387],[80.507737,16.465384],[80.507737,16.465381],[80.507739,16.46538],[80.507745,16.465376],[80.507757,16.46537]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507584,16.466188],[80.507673,16.466165],[80.50769,16.466161],[80.507732,16.466177],[80.507749,16.466186],[80.507749,16.466146],[80.507705,16.466146],[80.507584,16.466147],[80.507584,16.466188]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507669,16.466133],[80.507726,16.466133],[80.507727,16.466068],[80.507669,16.466069],[80.507669,16.466133]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507669,16.466051],[80.507727,16.466051],[80.507728,16.466032],[80.507669,16.466032],[80.507669,16.466051]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507669,16.466021],[80.507728,16.466021],[80.507728,16.465968],[80.507748,16.465968],[80.507747,16.465932],[80.507694,16.465957],[80.507597,16.465933],[80.507581,16.465928],[80.507581,16.46598],[80.507636,16.465979],[80.507636,16.465975],[80.507669,16.465975],[80.507669,16.466021]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507136,16.465965],[80.507199,16.465963],[80.507198,16.465847],[80.507137,16.465848],[80.507136,16.465965]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507154,16.466052],[80.507158,16.466052],[80.507158,16.466048],[80.507158,16.466007],[80.507157,16.465983],[80.507157,16.465976],[80.507137,16.465976],[80.507137,16.465978],[80.507137,16.466052],[80.507154,16.466052]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507159,16.466137],[80.507159,16.466124],[80.507158,16.466071],[80.507137,16.466071],[80.507138,16.466158],[80.507159,16.466157],[80.507159,16.466137]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50714,16.466258],[80.507207,16.466258],[80.507206,16.466178],[80.507139,16.466179],[80.50714,16.466258]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507156,16.46637],[80.507156,16.466343],[80.507156,16.466295],[80.507159,16.466295],[80.507158,16.46628],[80.50714,16.46628],[80.50714,16.466305],[80.50714,16.46637],[80.507156,16.46637]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507156,16.466401],[80.50714,16.466401],[80.507141,16.466477],[80.507142,16.466509],[80.507227,16.466508],[80.507319,16.466508],[80.507713,16.466504],[80.507715,16.466429],[80.507668,16.46643],[80.507668,16.466482],[80.507425,16.466483],[80.507234,16.466484],[80.507156,16.466485],[80.507156,16.466434],[80.507156,16.466401]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507668,16.466367],[80.507712,16.466367],[80.507713,16.466277],[80.507584,16.466276],[80.507584,16.466294],[80.507634,16.466293],[80.507634,16.466286],[80.507669,16.466285],[80.507668,16.466367]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50801,16.462788],[80.508097,16.462789],[80.508099,16.462728],[80.508109,16.462728],[80.508109,16.462712],[80.50806,16.462712],[80.508033,16.462712],[80.508022,16.462712],[80.508013,16.46272],[80.508011,16.462725],[80.508011,16.462757],[80.50801,16.462788]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508164,16.463122],[80.508187,16.463123],[80.508188,16.463109],[80.508164,16.463109],[80.508164,16.463118],[80.508164,16.463122]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50808,16.463122],[80.508104,16.463122],[80.508105,16.463109],[80.50808,16.463109],[80.50808,16.463122]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508009,16.463122],[80.50802,16.463122],[80.50802,16.463109],[80.508009,16.463109],[80.508009,16.463122]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508081,16.463051],[80.508104,16.463051],[80.508105,16.463029],[80.508081,16.463029],[80.508081,16.463051]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50801,16.463051],[80.50802,16.463051],[80.508021,16.463028],[80.50801,16.463028],[80.50801,16.463051]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508164,16.463052],[80.508189,16.463053],[80.508189,16.463029],[80.508164,16.46303],[80.508164,16.463045],[80.508164,16.463052]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508165,16.462971],[80.508188,16.462972],[80.508189,16.462948],[80.508164,16.462948],[80.508165,16.462963],[80.508165,16.462971]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508097,16.46297],[80.508104,16.46297],[80.508105,16.462948],[80.508097,16.462948],[80.508097,16.462961],[80.508097,16.46297]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508165,16.46289],[80.50819,16.46289],[80.508191,16.462867],[80.508165,16.462866],[80.508165,16.46289]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50825,16.462891],[80.508273,16.462891],[80.508274,16.462866],[80.50825,16.462867],[80.50825,16.462891]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508334,16.462892],[80.508358,16.462892],[80.508357,16.462868],[80.508334,16.462868],[80.508334,16.462892]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508346,16.462967],[80.508357,16.462967],[80.508358,16.462947],[80.508347,16.462947],[80.508346,16.462967]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508335,16.462809],[80.508358,16.46281],[80.508358,16.462786],[80.508349,16.462787],[80.508348,16.462799],[80.508335,16.462799],[80.508335,16.462809]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508251,16.462808],[80.508274,16.462809],[80.508274,16.462799],[80.508251,16.462799],[80.508251,16.462808]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508166,16.462808],[80.50819,16.462808],[80.50819,16.462799],[80.50819,16.462799],[80.508174,16.462799],[80.508166,16.462799],[80.508166,16.462808]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508256,16.463125],[80.508345,16.463126],[80.508346,16.463091],[80.508256,16.463092],[80.508256,16.463125]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506516,16.463229],[80.506663,16.463229],[80.506663,16.463197],[80.506732,16.463197],[80.506787,16.463197],[80.506787,16.463188],[80.506788,16.463185],[80.506514,16.463182],[80.506516,16.463229]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50668,16.463229],[80.506811,16.46323],[80.506811,16.463186],[80.5068,16.463186],[80.5068,16.463215],[80.50668,16.463214],[80.50668,16.463229]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506441,16.463229],[80.506442,16.463184],[80.506356,16.463184],[80.506356,16.463305],[80.506356,16.463374],[80.506366,16.463374],[80.506366,16.463356],[80.506366,16.463272],[80.506366,16.463228],[80.506441,16.463229]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506358,16.463771],[80.506475,16.463769],[80.506474,16.463733],[80.506435,16.463732],[80.506435,16.463754],[80.506396,16.463755],[80.506396,16.463733],[80.506358,16.463733],[80.506358,16.463771]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506249,16.463771],[80.506249,16.463736],[80.506249,16.463646],[80.50625,16.463183],[80.506216,16.463184],[80.506215,16.463569],[80.506213,16.463639],[80.506216,16.463771],[80.506249,16.463771]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506367,16.463063],[80.506321,16.463062],[80.506321,16.463067],[80.506321,16.463088],[80.506321,16.463101],[80.506324,16.463109],[80.506331,16.463114],[80.506339,16.463116],[80.506366,16.463115],[80.506367,16.463063]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50639,16.463115],[80.506407,16.463086],[80.506438,16.463086],[80.506455,16.463115],[80.506521,16.463115],[80.506576,16.463115],[80.506594,16.463087],[80.506624,16.463088],[80.506643,16.463116],[80.506678,16.463115],[80.506679,16.463063],[80.506391,16.46306],[80.50639,16.463115]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506736,16.463116],[80.506866,16.463116],[80.506866,16.463064],[80.50684,16.463064],[80.506825,16.463091],[80.506788,16.463091],[80.506774,16.463064],[80.506735,16.463064],[80.506736,16.463116]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50625,16.463062],[80.506251,16.463001],[80.506252,16.462784],[80.506256,16.46195],[80.506226,16.461949],[80.506222,16.462559],[80.506223,16.462745],[80.506224,16.46284],[80.506221,16.46301],[80.506222,16.463062],[80.50625,16.463062]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506256,16.461934],[80.506256,16.461801],[80.506466,16.461802],[80.506671,16.461803],[80.506874,16.461805],[80.506903,16.461805],[80.506912,16.461804],[80.506915,16.461803],[80.506919,16.4618],[80.506923,16.461796],[80.506924,16.461793],[80.506924,16.461789],[80.506925,16.461779],[80.506462,16.461774],[80.506226,16.461773],[80.506226,16.461827],[80.506227,16.461933],[80.506256,16.461934]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506997,16.4617],[80.506997,16.461759],[80.506996,16.461774],[80.506998,16.461783],[80.507003,16.46179],[80.507006,16.461796],[80.50701,16.461799],[80.507016,16.461802],[80.507022,16.461805],[80.507029,16.461807],[80.507036,16.461807],[80.507045,16.461805],[80.507053,16.461802],[80.507059,16.461796],[80.507066,16.46179],[80.507069,16.461784],[80.507071,16.461776],[80.507071,16.461768],[80.507071,16.461733],[80.50707,16.461706],[80.507074,16.461367],[80.507076,16.461147],[80.507086,16.459955],[80.507016,16.459958],[80.507007,16.460727],[80.506997,16.4617]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506943,16.459965],[80.506908,16.459972],[80.506909,16.460096],[80.506908,16.460238],[80.506905,16.460405],[80.506904,16.460541],[80.506904,16.460687],[80.5069,16.460875],[80.506902,16.460987],[80.506902,16.461062],[80.506918,16.461057],[80.506929,16.46105],[80.506931,16.460849],[80.506943,16.459965]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508487,16.463307],[80.508487,16.463134],[80.508275,16.46313],[80.508005,16.463125],[80.508003,16.463207],[80.507865,16.46321],[80.507544,16.463208],[80.507513,16.463209],[80.507426,16.463208],[80.507372,16.463207],[80.507337,16.463207],[80.507261,16.463206],[80.5072,16.463206],[80.50718,16.463206],[80.507181,16.463198],[80.507181,16.463152],[80.507181,16.463092],[80.507181,16.46305],[80.507135,16.463045],[80.507134,16.463237],[80.507135,16.463259],[80.507134,16.463323],[80.507134,16.463333],[80.507134,16.463345],[80.507135,16.463349],[80.507136,16.463352],[80.507138,16.463355],[80.507142,16.463358],[80.507148,16.463361],[80.507157,16.463361],[80.507226,16.463361],[80.507615,16.463361],[80.507916,16.463365],[80.508093,16.463366],[80.508259,16.463367],[80.508487,16.463368],[80.508487,16.463307]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507135,16.463032],[80.507181,16.463036],[80.507181,16.462967],[80.507182,16.462862],[80.507182,16.462836],[80.507183,16.46274],[80.507186,16.462523],[80.507187,16.462469],[80.507186,16.462354],[80.507185,16.462354],[80.507185,16.462352],[80.507175,16.462352],[80.507138,16.462352],[80.507138,16.462486],[80.507137,16.462731],[80.507135,16.462939],[80.507135,16.463032]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507139,16.462335],[80.507184,16.462336],[80.507185,16.462333],[80.507187,16.462333],[80.507187,16.462302],[80.507186,16.462217],[80.507189,16.46197],[80.507189,16.461702],[80.507192,16.461422],[80.507195,16.46119],[80.507198,16.460932],[80.507201,16.460607],[80.507204,16.460317],[80.507209,16.459954],[80.507161,16.459953],[80.507158,16.460345],[80.507152,16.460991],[80.507147,16.46153],[80.507139,16.462335]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508687,16.464228],[80.508692,16.463522],[80.508713,16.460624],[80.50872,16.459588],[80.508643,16.45959],[80.50864,16.46063],[80.508606,16.46217],[80.508596,16.463994],[80.508595,16.464226],[80.508687,16.464228]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508459,16.464621],[80.508486,16.464621],[80.508485,16.464526],[80.508081,16.464525],[80.508081,16.464555],[80.508224,16.464554],[80.508363,16.464553],[80.50846,16.464552],[80.508459,16.464621]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507912,16.464556],[80.507912,16.464525],[80.507653,16.464528],[80.50728,16.464527],[80.507185,16.46453],[80.507158,16.464531],[80.507142,16.464535],[80.507138,16.464539],[80.507133,16.46455],[80.507133,16.464562],[80.507132,16.464664],[80.507148,16.464663],[80.507147,16.46456],[80.507766,16.464557],[80.507912,16.464556]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507589,16.465594],[80.507589,16.465573],[80.507135,16.465575],[80.507135,16.465595],[80.507589,16.465594]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507156,16.465825],[80.507156,16.465809],[80.507155,16.465757],[80.507136,16.465758],[80.507137,16.465836],[80.507156,16.465835],[80.507156,16.465825]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507155,16.465739],[80.507155,16.465726],[80.507154,16.465666],[80.507173,16.465666],[80.507173,16.465657],[80.507134,16.465658],[80.507136,16.465739],[80.507155,16.465739]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507173,16.465657],[80.507173,16.465666],[80.50719,16.465666],[80.50719,16.46567],[80.507295,16.465669],[80.50743,16.465668],[80.507431,16.465656],[80.507173,16.465657]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507151,16.464993],[80.507135,16.464993],[80.507134,16.464993],[80.507134,16.464994],[80.507133,16.464995],[80.507133,16.464996],[80.507133,16.464999],[80.507133,16.465046],[80.507133,16.465068],[80.507133,16.46509],[80.507133,16.465096],[80.507134,16.4651],[80.507136,16.465103],[80.507138,16.465106],[80.50714,16.465107],[80.507143,16.465109],[80.507145,16.46511],[80.507148,16.46511],[80.507149,16.465111],[80.507158,16.465111],[80.507172,16.465111],[80.507201,16.465111],[80.50723,16.465111],[80.507262,16.465111],[80.507324,16.465111],[80.507417,16.465111],[80.507507,16.46511],[80.507555,16.465109],[80.507669,16.46511],[80.507772,16.465109],[80.507813,16.465109],[80.507901,16.465109],[80.507901,16.465097],[80.507832,16.465097],[80.507734,16.465097],[80.507659,16.465097],[80.50756,16.465098],[80.507493,16.465098],[80.507384,16.465098],[80.507252,16.465098],[80.507151,16.465099],[80.507151,16.46504],[80.507151,16.464993]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506875,16.4635],[80.506874,16.463717],[80.50684,16.463717],[80.50684,16.463742],[80.506919,16.463742],[80.506919,16.463602],[80.506919,16.4635],[80.506875,16.4635]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508267,16.464152],[80.508267,16.464121],[80.508266,16.464043],[80.508473,16.464045],[80.508471,16.46414],[80.508512,16.464139],[80.508511,16.464005],[80.508512,16.463878],[80.508493,16.463878],[80.508492,16.463954],[80.508466,16.463955],[80.508465,16.463956],[80.50822,16.463955],[80.508115,16.463954],[80.508114,16.463883],[80.508114,16.463822],[80.508072,16.463821],[80.508073,16.464151],[80.508267,16.464152]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507972,16.464226],[80.508003,16.464226],[80.50851,16.464227],[80.50851,16.464157],[80.508471,16.464157],[80.508267,16.464158],[80.508267,16.464153],[80.508161,16.464152],[80.507972,16.464152],[80.507972,16.464226]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507877,16.464226],[80.507877,16.464165],[80.507699,16.464165],[80.507699,16.464212],[80.507699,16.464215],[80.507631,16.464216],[80.507366,16.464217],[80.507203,16.464217],[80.507203,16.464225],[80.507363,16.464226],[80.507877,16.464226]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507485,16.465668],[80.507633,16.465667],[80.507633,16.465664],[80.507666,16.465663],[80.507666,16.465737],[80.507692,16.465737],[80.50769,16.465656],[80.507605,16.465656],[80.507555,16.465656],[80.507484,16.465657],[80.507485,16.465668]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50758,16.46585],[80.507691,16.465848],[80.507692,16.465757],[80.507666,16.465757],[80.507665,16.465821],[80.50758,16.465822],[80.50758,16.46585]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508346,16.465492],[80.5084,16.465531],[80.508403,16.465529],[80.5084,16.465493],[80.508399,16.465477],[80.508371,16.465459],[80.508346,16.465492]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508042,16.466276],[80.50798,16.466299],[80.507916,16.46627],[80.507916,16.466332],[80.507917,16.466377],[80.507948,16.466377],[80.507947,16.466322],[80.507983,16.466323],[80.507983,16.466327],[80.508042,16.466326],[80.508042,16.466276]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508139,16.466185],[80.508278,16.466184],[80.508459,16.466183],[80.508459,16.466163],[80.508268,16.466165],[80.508139,16.466166],[80.508139,16.466185]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508457,16.46632],[80.508457,16.466301],[80.508139,16.466301],[80.508139,16.466326],[80.508231,16.466324],[80.508318,16.466325],[80.508401,16.466324],[80.508426,16.466324],[80.508426,16.466319],[80.508457,16.46632]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507966,16.466482],[80.507966,16.466506],[80.508073,16.466506],[80.50846,16.466502],[80.508459,16.466478],[80.507966,16.466482]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508041,16.466188],[80.508041,16.466167],[80.507981,16.466167],[80.50795,16.466168],[80.507949,16.466168],[80.507949,16.466189],[80.508041,16.466188]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508438,16.466288],[80.50846,16.466287],[80.50846,16.466282],[80.508451,16.466282],[80.50845,16.466268],[80.50845,16.466262],[80.50846,16.466262],[80.508461,16.466242],[80.508461,16.46622],[80.508453,16.46622],[80.508453,16.466212],[80.508459,16.466212],[80.508459,16.466205],[80.508438,16.466206],[80.508438,16.466288]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506461,16.462094],[80.506521,16.462095],[80.506521,16.462079],[80.506461,16.462078],[80.506461,16.462094]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506363,16.462135],[80.506425,16.462135],[80.506425,16.462119],[80.506363,16.462119],[80.506363,16.462135]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506461,16.462177],[80.50652,16.462177],[80.50652,16.462161],[80.506461,16.462161],[80.506461,16.462177]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506363,16.462218],[80.506424,16.462218],[80.506424,16.462202],[80.506362,16.462201],[80.506363,16.462218]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50646,16.462259],[80.506519,16.462259],[80.50652,16.462243],[80.506459,16.462244],[80.50646,16.462259]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506459,16.462341],[80.506518,16.462341],[80.506519,16.462324],[80.506459,16.462324],[80.506459,16.462341]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506361,16.462381],[80.506422,16.462381],[80.506423,16.462365],[80.506361,16.462365],[80.506361,16.462381]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506459,16.462422],[80.506518,16.462422],[80.506518,16.462406],[80.506459,16.462406],[80.506459,16.462422]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506481,16.462514],[80.506494,16.462527],[80.506507,16.462514],[80.506494,16.462502],[80.506481,16.462514]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506435,16.462514],[80.506448,16.462526],[80.50646,16.462514],[80.506448,16.462502],[80.506435,16.462514]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506679,16.462996],[80.50665,16.462996],[80.50665,16.462999],[80.506563,16.462999],[80.506499,16.462999],[80.506448,16.462999],[80.506369,16.462999],[80.506368,16.462949],[80.506368,16.462903],[80.506367,16.462875],[80.506406,16.462873],[80.506406,16.462857],[80.506406,16.462795],[80.506407,16.462768],[80.506361,16.462767],[80.50636,16.462853],[80.506359,16.4629],[80.506359,16.462924],[80.506358,16.462964],[80.506358,16.463],[80.506357,16.463033],[80.50661,16.463034],[80.506679,16.463034],[80.506679,16.462996]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50665,16.462989],[80.506678,16.46299],[80.506677,16.46294],[80.506677,16.46293],[80.506649,16.46293],[80.50665,16.462968],[80.50665,16.462989]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506759,16.46299],[80.506759,16.462931],[80.506738,16.46293],[80.506737,16.462953],[80.506737,16.462989],[80.506759,16.46299]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506736,16.463034],[80.506919,16.463034],[80.506919,16.463005],[80.506919,16.462959],[80.506919,16.462921],[80.506919,16.462903],[80.506891,16.462902],[80.506891,16.46292],[80.506891,16.462981],[80.506916,16.462998],[80.50691,16.463008],[80.506905,16.463006],[80.506892,16.463],[80.506834,16.463],[80.506796,16.463],[80.506759,16.463],[80.506759,16.462995],[80.506736,16.462996],[80.506736,16.463034]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506419,16.462875],[80.506464,16.462875],[80.506465,16.462808],[80.506465,16.462768],[80.506418,16.462767],[80.506419,16.462875]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506477,16.462875],[80.506523,16.462874],[80.506523,16.462831],[80.506522,16.462769],[80.506477,16.462768],[80.506477,16.462809],[80.506477,16.462875]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506406,16.462767],[80.506386,16.462766],[80.506368,16.462766],[80.506368,16.46276],[80.506368,16.462751],[80.506368,16.462746],[80.506368,16.462709],[80.506368,16.46269],[80.506369,16.462642],[80.506411,16.462642],[80.506466,16.462642],[80.506522,16.462642],[80.506522,16.462616],[80.506523,16.462572],[80.506431,16.462572],[80.506363,16.462572],[80.506363,16.462573],[80.506361,16.462743],[80.506361,16.462759],[80.506361,16.462768],[80.506383,16.462768],[80.506402,16.462768],[80.506407,16.462768],[80.506407,16.462767],[80.506406,16.462767]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506872,16.463117],[80.506919,16.463117],[80.506919,16.463068],[80.506919,16.463062],[80.506867,16.463062],[80.506868,16.463089],[80.506868,16.463117],[80.506872,16.463117]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50692,16.46283],[80.506921,16.462495],[80.50689,16.462495],[80.506889,16.462508],[80.506888,16.462548],[80.50689,16.462777],[80.50689,16.46283],[80.50692,16.46283]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506891,16.46242],[80.506922,16.46242],[80.506924,16.462248],[80.506894,16.462249],[80.506891,16.46242]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508682,16.464608],[80.508638,16.464607],[80.50864,16.466208],[80.508682,16.466209],[80.508682,16.464608]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.50864,16.466208],[80.50864,16.466179],[80.508599,16.466181],[80.508599,16.466193],[80.508599,16.466244],[80.508599,16.466281],[80.508599,16.466318],[80.508599,16.46636],[80.508599,16.466412],[80.508658,16.466413],[80.508666,16.466413],[80.508666,16.466412],[80.508666,16.466376],[80.508608,16.466376],[80.508606,16.466272],[80.508607,16.466209],[80.50864,16.466208]]]]}}]},"ground":{"type":"FeatureCollection","name":"ground","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507408,16.465532],[80.507588,16.465531],[80.507586,16.465368],[80.507587,16.465236],[80.507407,16.465238],[80.507408,16.465532]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508332,16.462646],[80.508465,16.462644],[80.508465,16.462479],[80.508465,16.462425],[80.508332,16.462428],[80.508332,16.462553],[80.508332,16.462615],[80.508332,16.462646]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.5072,16.463206],[80.507372,16.463207],[80.507374,16.462957],[80.507376,16.462875],[80.507199,16.462874],[80.5072,16.463206]]]]}}]},"cricketground":{"type":"FeatureCollection","name":"cricketground","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507132,16.46332],[80.507132,16.463336],[80.507132,16.46334],[80.507133,16.463347],[80.507134,16.463351],[80.507137,16.463356],[80.507142,16.463359],[80.507146,16.463361],[80.507151,16.463362],[80.507178,16.463361],[80.507829,16.463364],[80.508487,16.463368],[80.508487,16.463134],[80.508494,16.462374],[80.508505,16.461263],[80.508513,16.460522],[80.508532,16.459591],[80.508419,16.459593],[80.508194,16.459597],[80.507792,16.459603],[80.507374,16.459609],[80.507322,16.45961],[80.507308,16.459666],[80.507283,16.459704],[80.50728,16.459708],[80.507277,16.459714],[80.50726,16.459743],[80.507243,16.459795],[80.507221,16.459833],[80.507163,16.459868],[80.507163,16.45993],[80.507163,16.45995],[80.507161,16.45995],[80.507161,16.459953],[80.507209,16.459954],[80.507132,16.46332]]]]}}]},"runningtrack":{"type":"FeatureCollection","name":"runningtrack","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508162,16.46105],[80.50818,16.46101],[80.508186,16.460983],[80.508195,16.46092],[80.508196,16.460819],[80.508197,16.460697],[80.508199,16.460616],[80.5082,16.460504],[80.5082,16.460458],[80.508201,16.460323],[80.508197,16.460278],[80.508188,16.460242],[80.508181,16.460223],[80.508171,16.4602],[80.508151,16.460168],[80.508134,16.460147],[80.508112,16.460124],[80.508089,16.460103],[80.508065,16.460084],[80.508032,16.460065],[80.508003,16.460051],[80.50798,16.460043],[80.507956,16.460036],[80.50793,16.46003],[80.507916,16.460028],[80.507897,16.460026],[80.507848,16.46003],[80.507804,16.460038],[80.507751,16.46005],[80.507722,16.460062],[80.50769,16.460082],[80.507657,16.460107],[80.507639,16.460122],[80.507615,16.46015],[80.507591,16.460184],[80.507574,16.460216],[80.507559,16.460256],[80.50755,16.460289],[80.507548,16.46031],[80.507548,16.460394],[80.507546,16.460529],[80.507544,16.460704],[80.507543,16.460857],[80.507544,16.46096],[80.507549,16.460997],[80.507563,16.461035],[80.507563,16.461032],[80.507613,16.461118],[80.507634,16.461141],[80.507648,16.461155],[80.507666,16.461169],[80.507684,16.461182],[80.507716,16.4612],[80.507728,16.461207],[80.50775,16.461215],[80.507772,16.461221],[80.507803,16.461227],[80.507839,16.461232],[80.507866,16.461233],[80.507901,16.461231],[80.507941,16.461225],[80.507977,16.461216],[80.508016,16.461198],[80.508051,16.461181],[80.508077,16.461161],[80.508108,16.46113],[80.508133,16.461098],[80.508162,16.46105]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508256,16.461186],[80.50828,16.461134],[80.508288,16.461097],[80.5083,16.461015],[80.508301,16.46088],[80.508303,16.460719],[80.508305,16.460611],[80.508306,16.460463],[80.508307,16.460402],[80.508308,16.460223],[80.508302,16.460164],[80.50829,16.460115],[80.508282,16.46009],[80.508268,16.46006],[80.508241,16.460018],[80.50822,16.45999],[80.50819,16.459959],[80.508159,16.459931],[80.508128,16.459906],[80.508084,16.459882],[80.508046,16.459863],[80.508015,16.459852],[80.507983,16.459842],[80.507949,16.459834],[80.507931,16.459832],[80.507905,16.45983],[80.50784,16.459834],[80.507782,16.459846],[80.507712,16.459862],[80.507673,16.459878],[80.50763,16.459904],[80.507587,16.459937],[80.507563,16.459957],[80.507532,16.459994],[80.5075,16.460039],[80.507477,16.460082],[80.507457,16.460134],[80.507445,16.460178],[80.507442,16.460206],[80.507442,16.460318],[80.50744,16.460497],[80.507437,16.460728],[80.507436,16.460931],[80.507437,16.461067],[80.507444,16.461116],[80.507462,16.461167],[80.507462,16.461163],[80.507528,16.461277],[80.507556,16.461307],[80.507575,16.461326],[80.507599,16.461345],[80.507623,16.461362],[80.507665,16.461385],[80.507681,16.461395],[80.50771,16.461405],[80.507739,16.461413],[80.507781,16.461421],[80.507828,16.461428],[80.507864,16.46143],[80.507911,16.461426],[80.507963,16.461419],[80.508011,16.461406],[80.508064,16.461384],[80.50811,16.46136],[80.508144,16.461334],[80.508184,16.461293],[80.508218,16.46125],[80.508256,16.461186]]]]}}]},"roadoutput":{"type":"FeatureCollection","name":"roadoutput","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"FID_roads_":0,"Id":0,"Shape_Leng":1370.95814735,"Shape_Area":61289.8339426,"FID_roads":-1,"Id_1":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507296,16.464217],[80.507366,16.464217],[80.507462,16.464216],[80.507296,16.464217]]],[[[80.507462,16.464216],[80.507631,16.464216],[80.507634,16.464216],[80.507462,16.464216]]],[[[80.507296,16.464217],[80.507182,16.464216],[80.507182,16.464226],[80.507131,16.464225],[80.50713,16.464215],[80.50713,16.464181],[80.50713,16.464155],[80.50713,16.464107],[80.507131,16.464057],[80.507131,16.463745],[80.507132,16.463743],[80.507132,16.463736],[80.507133,16.463572],[80.507132,16.463474],[80.507132,16.463471],[80.507131,16.463448],[80.507131,16.463444],[80.507134,16.463439],[80.507138,16.463435],[80.507143,16.463432],[80.507146,16.46343],[80.507641,16.463432],[80.507643,16.463364],[80.507411,16.463361],[80.507188,16.463361],[80.507151,16.463362],[80.507146,16.463361],[80.507142,16.463359],[80.507137,16.463356],[80.507134,16.463351],[80.507133,16.463347],[80.507132,16.46334],[80.507132,16.463333],[80.507135,16.462869],[80.507146,16.461747],[80.507162,16.460463],[80.507161,16.45995],[80.507163,16.45995],[80.507162,16.459935],[80.507163,16.459925],[80.507164,16.459893],[80.507163,16.459868],[80.507221,16.459833],[80.507242,16.459797],[80.50726,16.459743],[80.50728,16.459708],[80.507308,16.459666],[80.507322,16.45961],[80.507204,16.459612],[80.507191,16.459684],[80.507163,16.459725],[80.507029,16.459793],[80.50677,16.459893],[80.506686,16.459903],[80.50669,16.459963],[80.506915,16.459919],[80.506942,16.45991],[80.506943,16.459965],[80.506943,16.459968],[80.506942,16.460116],[80.506937,16.460353],[80.506936,16.461094],[80.50693,16.461774],[80.506927,16.461785],[80.506926,16.461796],[80.506916,16.461804],[80.506908,16.461806],[80.506893,16.461806],[80.50684,16.461806],[80.506259,16.461801],[80.506258,16.461956],[80.506254,16.462197],[80.50625,16.463061],[80.506357,16.46306],[80.506919,16.463062],[80.50692,16.463257],[80.50692,16.46343],[80.506919,16.463579],[80.506919,16.463602],[80.506919,16.463742],[80.506918,16.463742],[80.506918,16.463777],[80.506906,16.464362],[80.507062,16.464368],[80.507062,16.464426],[80.50706,16.464517],[80.50706,16.46454],[80.50705,16.464537],[80.507056,16.464544],[80.50706,16.464552],[80.507061,16.464557],[80.507061,16.464575],[80.507061,16.464619],[80.507061,16.464969],[80.507062,16.465273],[80.507063,16.465359],[80.50699,16.465361],[80.506989,16.465237],[80.506989,16.465361],[80.506939,16.465361],[80.506799,16.465362],[80.50661,16.465363],[80.506468,16.465365],[80.506467,16.465385],[80.506508,16.465384],[80.506678,16.465382],[80.506876,16.46538],[80.506989,16.46538],[80.507062,16.46538],[80.507063,16.465808],[80.507068,16.465999],[80.507069,16.466396],[80.507071,16.466461],[80.507071,16.466507],[80.50707,16.466515],[80.507064,16.466522],[80.507056,16.466528],[80.507042,16.466531],[80.507027,16.466531],[80.507015,16.466528],[80.507003,16.466518],[80.507,16.466511],[80.507004,16.466607],[80.508312,16.466603],[80.508657,16.466597],[80.508658,16.466413],[80.508599,16.466412],[80.508599,16.466351],[80.508599,16.464226],[80.508595,16.464226],[80.508596,16.463994],[80.508599,16.463441],[80.508603,16.462643],[80.508608,16.462062],[80.508631,16.461063],[80.508641,16.460309],[80.508642,16.460133],[80.508643,16.459924],[80.508643,16.45959],[80.508561,16.459591],[80.50856,16.460057],[80.508512,16.462431],[80.508509,16.46267],[80.508509,16.462716],[80.508519,16.462716],[80.508517,16.462748],[80.508515,16.462795],[80.508508,16.462795],[80.508507,16.46289],[80.508514,16.46304],[80.508513,16.463134],[80.508487,16.463134],[80.508487,16.463335],[80.508487,16.463368],[80.508509,16.463368],[80.50851,16.46344],[80.508512,16.463878],[80.508512,16.463878],[80.508511,16.464005],[80.508512,16.464139],[80.508511,16.464139],[80.50851,16.464227],[80.508003,16.464226],[80.507972,16.464226],[80.507972,16.464164],[80.507968,16.464164],[80.507877,16.464165],[80.507877,16.464226],[80.507363,16.464226],[80.507203,16.464225],[80.507203,16.464217],[80.507296,16.464217]],[[80.507234,16.46433],[80.5073,16.46433],[80.507334,16.464329],[80.507315,16.464351],[80.507516,16.46435],[80.507887,16.464352],[80.507891,16.464363],[80.507893,16.464372],[80.507894,16.46438],[80.507894,16.464392],[80.507894,16.464398],[80.507892,16.464408],[80.50789,16.464415],[80.507887,16.464423],[80.507881,16.464432],[80.507871,16.464442],[80.507823,16.464444],[80.507813,16.464434],[80.50781,16.4644],[80.507702,16.464398],[80.507643,16.464397],[80.507635,16.464397],[80.507629,16.464398],[80.507624,16.464401],[80.507622,16.464404],[80.50762,16.464409],[80.507619,16.464417],[80.507619,16.464429],[80.507618,16.464434],[80.507617,16.464437],[80.50761,16.464441],[80.507592,16.464441],[80.507586,16.464439],[80.507582,16.464435],[80.50758,16.464431],[80.507579,16.464421],[80.507579,16.464413],[80.507579,16.464409],[80.507577,16.464405],[80.507575,16.464402],[80.507571,16.4644],[80.507568,16.4644],[80.507547,16.4644],[80.507513,16.464399],[80.50748,16.464399],[80.50742,16.4644],[80.50738,16.464401],[80.507378,16.464407],[80.507375,16.46442],[80.507372,16.464429],[80.507368,16.464436],[80.50736,16.464439],[80.50735,16.464442],[80.507309,16.464442],[80.507232,16.464441],[80.50718,16.464441],[80.507168,16.464437],[80.507153,16.464429],[80.507146,16.464424],[80.50714,16.464416],[80.507136,16.46441],[80.507133,16.464403],[80.507131,16.464395],[80.507131,16.464383],[80.507131,16.464375],[80.507133,16.464367],[80.507137,16.464358],[80.507139,16.464354],[80.507143,16.464348],[80.507149,16.464342],[80.507157,16.464337],[80.507162,16.464334],[80.507172,16.464331],[80.507186,16.46433],[80.507234,16.46433]],[[80.507989,16.464346],[80.507995,16.464345],[80.508,16.464345],[80.508006,16.464348],[80.50801,16.46435],[80.508013,16.464353],[80.508016,16.464358],[80.508017,16.464362],[80.508018,16.464418],[80.508018,16.464423],[80.508017,16.464429],[80.508016,16.464432],[80.508012,16.464436],[80.508009,16.464439],[80.508003,16.464442],[80.507997,16.464443],[80.507994,16.464442],[80.507989,16.464441],[80.507983,16.464438],[80.50798,16.464434],[80.507977,16.464428],[80.507976,16.464422],[80.507976,16.464396],[80.507975,16.464365],[80.507977,16.464359],[80.507978,16.464356],[80.50798,16.464352],[80.507983,16.46435],[80.507989,16.464346]],[[80.508108,16.464364],[80.508119,16.464352],[80.508214,16.464351],[80.508298,16.464352],[80.508387,16.464352],[80.508448,16.464352],[80.508501,16.464353],[80.508505,16.464359],[80.508509,16.464367],[80.508511,16.464375],[80.508511,16.464384],[80.50851,16.464393],[80.508506,16.464402],[80.5085,16.464411],[80.508492,16.46442],[80.508484,16.464427],[80.508474,16.464434],[80.508461,16.46444],[80.508452,16.464442],[80.508438,16.464442],[80.508432,16.464437],[80.508431,16.464402],[80.508427,16.464398],[80.508411,16.464398],[80.50838,16.464398],[80.508335,16.464398],[80.508293,16.464398],[80.508256,16.464398],[80.508217,16.464398],[80.508181,16.464399],[80.508181,16.464425],[80.508181,16.464433],[80.508179,16.464438],[80.508175,16.464442],[80.508171,16.464443],[80.508166,16.464443],[80.508144,16.464443],[80.508122,16.464443],[80.508115,16.464437],[80.508109,16.46443],[80.508104,16.464423],[80.508099,16.464405],[80.508098,16.464393],[80.508099,16.464383],[80.508101,16.464376],[80.508108,16.464364]],[[80.508512,16.466284],[80.508511,16.466522],[80.507896,16.466524],[80.507429,16.466529],[80.507188,16.46653],[80.50716,16.466531],[80.507153,16.466528],[80.507147,16.466525],[80.507143,16.466521],[80.507142,16.466518],[80.507142,16.466509],[80.507141,16.466477],[80.50714,16.466401],[80.507141,16.466401],[80.507141,16.46637],[80.50714,16.46637],[80.50714,16.466305],[80.50714,16.46628],[80.507141,16.46628],[80.50714,16.466258],[80.50714,16.466258],[80.507139,16.466179],[80.50714,16.466179],[80.50714,16.466158],[80.507138,16.466158],[80.507137,16.466071],[80.507139,16.466071],[80.507139,16.466052],[80.507137,16.466052],[80.507137,16.465978],[80.507137,16.465976],[80.507139,16.465976],[80.507139,16.465965],[80.507136,16.465965],[80.507137,16.465848],[80.507138,16.465848],[80.507138,16.465836],[80.507137,16.465836],[80.507136,16.465758],[80.507138,16.465757],[80.507138,16.465739],[80.507136,16.465739],[80.507134,16.465658],[80.507137,16.465658],[80.507137,16.465595],[80.507135,16.465595],[80.507135,16.465575],[80.507137,16.465575],[80.507135,16.465101],[80.507134,16.4651],[80.507133,16.465096],[80.507133,16.46509],[80.507133,16.465068],[80.507133,16.465046],[80.507133,16.464999],[80.507133,16.464996],[80.507133,16.464995],[80.507134,16.464994],[80.507134,16.464993],[80.507132,16.464664],[80.507132,16.464664],[80.507132,16.464607],[80.507133,16.46455],[80.507138,16.464539],[80.507142,16.464535],[80.507158,16.464531],[80.507185,16.46453],[80.50728,16.464527],[80.507555,16.464528],[80.507754,16.464527],[80.507912,16.464525],[80.507912,16.464526],[80.508081,16.464525],[80.508485,16.464526],[80.508493,16.46453],[80.5085,16.464534],[80.508504,16.464538],[80.508507,16.464544],[80.508509,16.464549],[80.508509,16.464556],[80.50851,16.464563],[80.508511,16.464769],[80.508509,16.465183],[80.508512,16.465747],[80.508511,16.466043],[80.508511,16.466058],[80.508512,16.466284]],[[80.507003,16.463829],[80.507018,16.463823],[80.507029,16.463823],[80.507043,16.463828],[80.507052,16.463841],[80.507058,16.463854],[80.507058,16.463869],[80.50706,16.464101],[80.507061,16.464224],[80.506983,16.464224],[80.506987,16.463872],[80.506991,16.463851],[80.506995,16.463837],[80.507003,16.463829]],[[80.506989,16.463742],[80.506989,16.463719],[80.506987,16.46343],[80.507061,16.46343],[80.507063,16.463723],[80.507062,16.463739],[80.507059,16.463749],[80.507052,16.463763],[80.507041,16.46377],[80.50703,16.463774],[80.507019,16.463773],[80.507007,16.463771],[80.506997,16.463761],[80.506991,16.463753],[80.506989,16.463742]],[[80.506362,16.462257],[80.506362,16.461955],[80.506527,16.461955],[80.506925,16.461958],[80.506925,16.462159],[80.506925,16.462175],[80.506895,16.462175],[80.506894,16.462225],[80.506894,16.462249],[80.506924,16.462248],[80.506922,16.46242],[80.506891,16.46242],[80.506891,16.462432],[80.506891,16.462443],[80.50689,16.462495],[80.506921,16.462495],[80.50692,16.46283],[80.50689,16.46283],[80.506891,16.462902],[80.506919,16.462903],[80.506919,16.463032],[80.506919,16.463034],[80.506736,16.463034],[80.506679,16.463034],[80.506357,16.463033],[80.506363,16.462573],[80.506363,16.462456],[80.506362,16.462257]],[[80.507054,16.459956],[80.507086,16.459955],[80.507086,16.459955],[80.507086,16.459955],[80.50705,16.459957],[80.507015,16.459961],[80.507016,16.459958],[80.507033,16.459957],[80.507054,16.459956]]]]}}]},"roads_2":{"type":"FeatureCollection","name":"roads_2","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"Id":0,"Shape_Leng":1370.95814735,"Shape_Area":61289.8339426},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507296,16.464217],[80.507366,16.464217],[80.507462,16.464216],[80.507296,16.464217]]],[[[80.507462,16.464216],[80.507631,16.464216],[80.507634,16.464216],[80.507462,16.464216]]],[[[80.507296,16.464217],[80.507182,16.464216],[80.507182,16.464226],[80.507131,16.464225],[80.50713,16.464215],[80.50713,16.464181],[80.50713,16.464155],[80.50713,16.464107],[80.507131,16.464057],[80.507131,16.463745],[80.507132,16.463743],[80.507132,16.463736],[80.507133,16.463572],[80.507132,16.463474],[80.507132,16.463471],[80.507131,16.463448],[80.507131,16.463444],[80.507134,16.463439],[80.507138,16.463435],[80.507143,16.463432],[80.507146,16.46343],[80.507061,16.46343],[80.507063,16.463723],[80.507062,16.463739],[80.507059,16.463749],[80.507052,16.463763],[80.507041,16.46377],[80.50703,16.463774],[80.507019,16.463773],[80.507007,16.463771],[80.506997,16.463761],[80.506991,16.463753],[80.506989,16.463742],[80.506989,16.463719],[80.506987,16.46343],[80.50692,16.46343],[80.506919,16.463579],[80.506919,16.463602],[80.506919,16.463742],[80.506918,16.463742],[80.506918,16.463777],[80.506906,16.464362],[80.507062,16.464368],[80.507062,16.464426],[80.50706,16.464517],[80.50706,16.46454],[80.50705,16.464537],[80.507056,16.464544],[80.50706,16.464552],[80.507061,16.464557],[80.507061,16.464575],[80.507061,16.464619],[80.507061,16.464969],[80.507062,16.465273],[80.507063,16.465359],[80.50699,16.465361],[80.506989,16.465237],[80.506989,16.46538],[80.507062,16.46538],[80.507063,16.465808],[80.507068,16.465999],[80.507069,16.466396],[80.507071,16.466461],[80.507071,16.466507],[80.50707,16.466515],[80.507064,16.466522],[80.507056,16.466528],[80.507042,16.466531],[80.507027,16.466531],[80.507015,16.466528],[80.507003,16.466518],[80.507,16.466511],[80.507004,16.466607],[80.508312,16.466603],[80.508657,16.466597],[80.508658,16.46641],[80.508599,16.466412],[80.508599,16.466351],[80.508599,16.464226],[80.508595,16.464226],[80.508596,16.463994],[80.508599,16.463441],[80.50851,16.46344],[80.508512,16.463878],[80.508512,16.463878],[80.508511,16.464005],[80.508512,16.464139],[80.508511,16.464139],[80.50851,16.464227],[80.508003,16.464226],[80.507972,16.464226],[80.507972,16.464164],[80.507968,16.464164],[80.507877,16.464165],[80.507877,16.464226],[80.507363,16.464226],[80.507203,16.464225],[80.507203,16.464217],[80.507296,16.464217]],[[80.507234,16.46433],[80.5073,16.46433],[80.507334,16.464329],[80.507315,16.464351],[80.507516,16.46435],[80.507887,16.464352],[80.507891,16.464363],[80.507893,16.464372],[80.507894,16.46438],[80.507894,16.464392],[80.507894,16.464398],[80.507892,16.464408],[80.50789,16.464415],[80.507887,16.464423],[80.507881,16.464432],[80.507871,16.464442],[80.507823,16.464444],[80.507813,16.464434],[80.50781,16.4644],[80.507702,16.464398],[80.507643,16.464397],[80.507635,16.464397],[80.507629,16.464398],[80.507624,16.464401],[80.507622,16.464404],[80.50762,16.464409],[80.507619,16.464417],[80.507619,16.464429],[80.507618,16.464434],[80.507617,16.464437],[80.50761,16.464441],[80.507592,16.464441],[80.507586,16.464439],[80.507582,16.464435],[80.50758,16.464431],[80.507579,16.464421],[80.507579,16.464413],[80.507579,16.464409],[80.507577,16.464405],[80.507575,16.464402],[80.507571,16.4644],[80.507568,16.4644],[80.507547,16.4644],[80.507513,16.464399],[80.50748,16.464399],[80.50742,16.4644],[80.50738,16.464401],[80.507378,16.464407],[80.507375,16.46442],[80.507372,16.464429],[80.507368,16.464436],[80.50736,16.464439],[80.50735,16.464442],[80.507309,16.464442],[80.507232,16.464441],[80.50718,16.464441],[80.507168,16.464437],[80.507153,16.464429],[80.507146,16.464424],[80.50714,16.464416],[80.507136,16.46441],[80.507133,16.464403],[80.507131,16.464395],[80.507131,16.464383],[80.507131,16.464375],[80.507133,16.464367],[80.507137,16.464358],[80.507139,16.464354],[80.507143,16.464348],[80.507149,16.464342],[80.507157,16.464337],[80.507162,16.464334],[80.507172,16.464331],[80.507186,16.46433],[80.507234,16.46433]],[[80.507989,16.464346],[80.507995,16.464345],[80.508,16.464345],[80.508006,16.464348],[80.50801,16.46435],[80.508013,16.464353],[80.508016,16.464358],[80.508017,16.464362],[80.508018,16.464418],[80.508018,16.464423],[80.508017,16.464429],[80.508016,16.464432],[80.508012,16.464436],[80.508009,16.464439],[80.508003,16.464442],[80.507997,16.464443],[80.507994,16.464442],[80.507989,16.464441],[80.507983,16.464438],[80.50798,16.464434],[80.507977,16.464428],[80.507976,16.464422],[80.507976,16.464396],[80.507975,16.464365],[80.507977,16.464359],[80.507978,16.464356],[80.50798,16.464352],[80.507983,16.46435],[80.507989,16.464346]],[[80.508108,16.464364],[80.508119,16.464352],[80.508214,16.464351],[80.508298,16.464352],[80.508387,16.464352],[80.508448,16.464352],[80.508501,16.464353],[80.508505,16.464359],[80.508509,16.464367],[80.508511,16.464375],[80.508511,16.464384],[80.50851,16.464393],[80.508506,16.464402],[80.5085,16.464411],[80.508492,16.46442],[80.508484,16.464427],[80.508474,16.464434],[80.508461,16.46444],[80.508452,16.464442],[80.508438,16.464442],[80.508432,16.464437],[80.508431,16.464402],[80.508427,16.464398],[80.508411,16.464398],[80.50838,16.464398],[80.508335,16.464398],[80.508293,16.464398],[80.508256,16.464398],[80.508217,16.464398],[80.508181,16.464399],[80.508181,16.464425],[80.508181,16.464433],[80.508179,16.464438],[80.508175,16.464442],[80.508171,16.464443],[80.508166,16.464443],[80.508144,16.464443],[80.508122,16.464443],[80.508115,16.464437],[80.508109,16.46443],[80.508104,16.464423],[80.508099,16.464405],[80.508098,16.464393],[80.508099,16.464383],[80.508101,16.464376],[80.508108,16.464364]],[[80.508512,16.466284],[80.508511,16.466522],[80.507896,16.466524],[80.507429,16.466529],[80.507188,16.46653],[80.50716,16.466531],[80.507153,16.466528],[80.507147,16.466525],[80.507143,16.466521],[80.507142,16.466518],[80.507142,16.466509],[80.507141,16.466477],[80.50714,16.466401],[80.507141,16.466401],[80.507141,16.46637],[80.50714,16.46637],[80.50714,16.466305],[80.50714,16.46628],[80.507141,16.46628],[80.50714,16.466258],[80.50714,16.466258],[80.507139,16.466179],[80.50714,16.466179],[80.50714,16.466158],[80.507138,16.466158],[80.507137,16.466071],[80.507139,16.466071],[80.507139,16.466052],[80.507137,16.466052],[80.507137,16.465978],[80.507137,16.465976],[80.507139,16.465976],[80.507139,16.465965],[80.507136,16.465965],[80.507137,16.465848],[80.507138,16.465848],[80.507138,16.465836],[80.507137,16.465836],[80.507136,16.465758],[80.507138,16.465757],[80.507138,16.465739],[80.507136,16.465739],[80.507134,16.465658],[80.507137,16.465658],[80.507137,16.465595],[80.507135,16.465595],[80.507135,16.465575],[80.507137,16.465575],[80.507135,16.465101],[80.507134,16.4651],[80.507133,16.465096],[80.507133,16.46509],[80.507133,16.465068],[80.507133,16.465046],[80.507133,16.464999],[80.507133,16.464996],[80.507133,16.464995],[80.507134,16.464994],[80.507134,16.464993],[80.507132,16.464664],[80.507132,16.464664],[80.507132,16.464607],[80.507133,16.46455],[80.507138,16.464539],[80.507142,16.464535],[80.507158,16.464531],[80.507185,16.46453],[80.50728,16.464527],[80.507555,16.464528],[80.507754,16.464527],[80.507912,16.464525],[80.507912,16.464526],[80.508081,16.464525],[80.508485,16.464526],[80.508493,16.46453],[80.5085,16.464534],[80.508504,16.464538],[80.508507,16.464544],[80.508509,16.464549],[80.508509,16.464556],[80.50851,16.464563],[80.508511,16.464769],[80.508509,16.465183],[80.508512,16.465747],[80.508511,16.466043],[80.508511,16.466058],[80.508512,16.466284]],[[80.507003,16.463829],[80.507018,16.463823],[80.507029,16.463823],[80.507043,16.463828],[80.507052,16.463841],[80.507058,16.463854],[80.507058,16.463869],[80.50706,16.464101],[80.507061,16.464224],[80.506983,16.464224],[80.506987,16.463872],[80.506991,16.463851],[80.506995,16.463837],[80.507003,16.463829]]]]}}]},"roads":{"type":"FeatureCollection","name":"roads","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507641,16.463432],[80.507643,16.463364],[80.507411,16.463361],[80.507188,16.463361],[80.507151,16.463362],[80.507146,16.463361],[80.507142,16.463359],[80.507137,16.463356],[80.507134,16.463351],[80.507133,16.463347],[80.507132,16.46334],[80.507132,16.463333],[80.507135,16.462869],[80.507146,16.461747],[80.507162,16.460463],[80.507161,16.45995],[80.50705,16.459957],[80.506943,16.459968],[80.506942,16.460116],[80.506937,16.460353],[80.506936,16.461094],[80.50693,16.461774],[80.506927,16.461785],[80.506926,16.461796],[80.506916,16.461804],[80.506908,16.461806],[80.506893,16.461806],[80.50684,16.461806],[80.506259,16.461801],[80.506258,16.461956],[80.506254,16.462197],[80.50625,16.463061],[80.506357,16.46306],[80.506363,16.462573],[80.506363,16.462456],[80.506362,16.462257],[80.506362,16.461955],[80.506527,16.461955],[80.506925,16.461958],[80.506925,16.462159],[80.506921,16.46249],[80.506919,16.463032],[80.50692,16.463257],[80.50692,16.46343],[80.507641,16.463432]]]]}}]},"busbay":{"type":"FeatureCollection","name":"busbay","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.506634,16.459849],[80.506586,16.459814],[80.506552,16.459796],[80.506524,16.459786],[80.506153,16.459779],[80.505972,16.459776],[80.50596,16.459776],[80.505949,16.459772],[80.505938,16.459764],[80.50593,16.459755],[80.505925,16.459748],[80.505919,16.459744],[80.505912,16.459741],[80.505896,16.459741],[80.505636,16.459737],[80.50556,16.459737],[80.505548,16.459743],[80.505541,16.459749],[80.505537,16.459754],[80.505529,16.459761],[80.505521,16.459766],[80.505512,16.459769],[80.505506,16.459771],[80.505493,16.459772],[80.505449,16.459771],[80.505235,16.459769],[80.505067,16.459767],[80.504849,16.459764],[80.504662,16.459762],[80.504622,16.459761],[80.504598,16.459761],[80.504572,16.459765],[80.504551,16.459772],[80.504534,16.459782],[80.504518,16.459795],[80.504443,16.459866],[80.504343,16.45996],[80.504267,16.460033],[80.504248,16.460051],[80.504236,16.460069],[80.504228,16.460085],[80.504224,16.460099],[80.504222,16.460108],[80.504219,16.460139],[80.504219,16.460193],[80.504217,16.46031],[80.504215,16.460491],[80.50422,16.460511],[80.504228,16.460523],[80.50424,16.460535],[80.504251,16.460548],[80.504261,16.460555],[80.504273,16.460566],[80.504283,16.460571],[80.504294,16.460576],[80.504309,16.460583],[80.504324,16.460585],[80.50445,16.460558],[80.504592,16.460524],[80.504763,16.460472],[80.505407,16.460274],[80.50576,16.460191],[80.506154,16.460092],[80.506579,16.459991],[80.50669,16.459963],[80.506686,16.459903],[80.506634,16.459849]]]]}}]},"design":{"type":"FeatureCollection","name":"design","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.507833,16.465207],[80.50784,16.465207],[80.507844,16.465185],[80.507853,16.465132],[80.507845,16.46513],[80.507835,16.465196],[80.507833,16.465207]]],[[[80.507873,16.465343],[80.507881,16.465342],[80.507883,16.46533],[80.507887,16.465326],[80.507889,16.465324],[80.507891,16.465323],[80.507893,16.465321],[80.507894,16.46532],[80.507897,16.465319],[80.5079,16.465316],[80.507909,16.465309],[80.50793,16.465292],[80.507931,16.465293],[80.507965,16.465272],[80.507988,16.465267],[80.507992,16.465243],[80.508047,16.46521],[80.508132,16.465156],[80.5082,16.465113],[80.508184,16.465114],[80.508179,16.465118],[80.508095,16.46517],[80.508033,16.465207],[80.508023,16.465214],[80.508011,16.465221],[80.508001,16.465227],[80.507989,16.465235],[80.507982,16.465239],[80.507968,16.465247],[80.507962,16.465251],[80.507961,16.465252],[80.507952,16.46526],[80.50795,16.465261],[80.507941,16.465262],[80.507925,16.465285],[80.507901,16.465304],[80.507887,16.465314],[80.507894,16.465285],[80.507901,16.465257],[80.507929,16.465231],[80.507937,16.465224],[80.50795,16.465201],[80.508004,16.465111],[80.507995,16.465111],[80.507978,16.46514],[80.507953,16.465182],[80.507933,16.465215],[80.507915,16.465233],[80.507894,16.465253],[80.507892,16.465261],[80.507886,16.465284],[80.507884,16.46529],[80.507878,16.465317],[80.507874,16.465331],[80.507874,16.465338],[80.507873,16.465343]]],[[[80.507873,16.465389],[80.507873,16.465398],[80.507893,16.465397],[80.507903,16.465397],[80.507937,16.465392],[80.507976,16.46539],[80.507987,16.46539],[80.507992,16.46539],[80.508026,16.465375],[80.508045,16.465368],[80.508073,16.465356],[80.508083,16.465343],[80.508038,16.465362],[80.508025,16.465368],[80.507995,16.465382],[80.507989,16.465381],[80.507948,16.465382],[80.507907,16.465387],[80.507902,16.465388],[80.507873,16.465389]]],[[[80.507873,16.465398],[80.507873,16.465407],[80.507903,16.465422],[80.507927,16.465435],[80.507952,16.465445],[80.507984,16.465458],[80.507992,16.465462],[80.507998,16.465455],[80.507984,16.465449],[80.507968,16.465442],[80.507953,16.465435],[80.507927,16.465425],[80.507903,16.465412],[80.507873,16.465398]]],[[[80.507873,16.465407],[80.507873,16.465389],[80.507873,16.465381],[80.507901,16.465369],[80.507932,16.465354],[80.507939,16.465352],[80.507946,16.46535],[80.507955,16.465341],[80.507958,16.465338],[80.507965,16.465333],[80.507974,16.465327],[80.507982,16.465321],[80.507995,16.465312],[80.508019,16.465307],[80.508128,16.465285],[80.508134,16.465277],[80.508122,16.46528],[80.508081,16.465286],[80.508034,16.465295],[80.507993,16.465304],[80.50798,16.465313],[80.507947,16.465322],[80.50793,16.465342],[80.507902,16.46536],[80.507874,16.465373],[80.507874,16.465358],[80.507873,16.465351],[80.507873,16.465343],[80.507874,16.465332],[80.507873,16.465312],[80.507869,16.465312],[80.507864,16.465312],[80.507864,16.465312],[80.507856,16.465312],[80.507845,16.465285],[80.507838,16.465268],[80.507833,16.465246],[80.507838,16.46523],[80.507833,16.465207],[80.507833,16.465206],[80.507832,16.465206],[80.507822,16.465207],[80.507823,16.46523],[80.507818,16.465236],[80.507812,16.465246],[80.507829,16.465268],[80.507834,16.465281],[80.507847,16.465312],[80.507839,16.465312],[80.507834,16.465312],[80.507827,16.465312],[80.507793,16.465312],[80.507795,16.465285],[80.507797,16.465271],[80.507783,16.465245],[80.507738,16.465179],[80.507746,16.465114],[80.507739,16.465114],[80.507728,16.46518],[80.507789,16.46527],[80.507788,16.465286],[80.507786,16.465312],[80.507756,16.465312],[80.507748,16.465303],[80.50774,16.465294],[80.507741,16.465292],[80.50774,16.465292],[80.507733,16.465286],[80.50772,16.465278],[80.507718,16.465255],[80.507692,16.465237],[80.507677,16.465222],[80.507666,16.465209],[80.507649,16.465184],[80.507629,16.46515],[80.507606,16.465113],[80.507596,16.465114],[80.507602,16.465124],[80.507612,16.46514],[80.507622,16.465157],[80.50763,16.465168],[80.50765,16.465203],[80.507658,16.465215],[80.50768,16.465237],[80.507683,16.46524],[80.507687,16.465244],[80.507687,16.465245],[80.507709,16.46528],[80.507713,16.465299],[80.507738,16.465303],[80.507745,16.465312],[80.507714,16.465312],[80.507705,16.465312],[80.507705,16.465314],[80.507705,16.465322],[80.507705,16.465331],[80.507701,16.465328],[80.507699,16.465326],[80.507697,16.465325],[80.507692,16.465322],[80.507687,16.465319],[80.507679,16.465314],[80.507677,16.465312],[80.507671,16.465308],[80.50765,16.465306],[80.507589,16.465301],[80.507589,16.46531],[80.507628,16.465313],[80.507669,16.465316],[80.507677,16.465321],[80.50768,16.465322],[80.507681,16.465323],[80.507682,16.465324],[80.507683,16.465325],[80.507685,16.465326],[80.507687,16.465327],[80.507688,16.465328],[80.507691,16.46533],[80.507692,16.46533],[80.507695,16.465333],[80.5077,16.465336],[80.507702,16.465337],[80.507703,16.465338],[80.507704,16.465339],[80.507704,16.46534],[80.507704,16.465341],[80.507705,16.465343],[80.507705,16.465344],[80.507705,16.465353],[80.507705,16.465361],[80.507705,16.465374],[80.507706,16.465389],[80.507693,16.465386],[80.507683,16.465383],[80.507677,16.465382],[80.507676,16.465381],[80.507676,16.465381],[80.50766,16.465374],[80.507656,16.46537],[80.507643,16.465356],[80.507619,16.465369],[80.507589,16.465363],[80.50759,16.465371],[80.507624,16.465379],[80.50764,16.465374],[80.507648,16.465379],[80.507658,16.465384],[80.507671,16.46539],[80.507673,16.465388],[80.507705,16.465396],[80.507705,16.465399],[80.507705,16.465411],[80.507701,16.465415],[80.507695,16.465419],[80.507693,16.465421],[80.507689,16.465426],[80.507684,16.465427],[80.507677,16.465429],[80.507662,16.465434],[80.50759,16.465453],[80.50759,16.465463],[80.507677,16.465438],[80.507687,16.465435],[80.507694,16.465431],[80.507698,16.465427],[80.507705,16.46542],[80.507704,16.465446],[80.507683,16.46546],[80.507678,16.465469],[80.507671,16.465478],[80.507662,16.465493],[80.507658,16.4655],[80.507655,16.465499],[80.507644,16.465523],[80.507621,16.465529],[80.507619,16.465535],[80.50761,16.465556],[80.50762,16.465561],[80.507629,16.465552],[80.507647,16.465533],[80.507653,16.46553],[80.507658,16.465542],[80.507664,16.465556],[80.507664,16.465556],[80.507669,16.465566],[80.507693,16.465626],[80.507702,16.465623],[80.507682,16.465576],[80.507678,16.465569],[80.507674,16.465558],[80.507678,16.465555],[80.507687,16.465549],[80.507695,16.465545],[80.507711,16.465532],[80.507726,16.4655],[80.507737,16.465475],[80.507748,16.465476],[80.507753,16.465475],[80.507776,16.465475],[80.507772,16.465482],[80.507764,16.465499],[80.507762,16.465503],[80.507752,16.465512],[80.507745,16.465518],[80.50775,16.465527],[80.507762,16.465548],[80.507766,16.465557],[80.507776,16.465575],[80.507783,16.46559],[80.507783,16.465595],[80.507781,16.465604],[80.507769,16.465654],[80.507778,16.465654],[80.50779,16.465601],[80.507824,16.465614],[80.50791,16.465646],[80.507913,16.465639],[80.507833,16.465608],[80.507792,16.465593],[80.507784,16.465575],[80.507771,16.465548],[80.507767,16.465538],[80.507763,16.465525],[80.507763,16.46552],[80.507769,16.465514],[80.507776,16.465499],[80.507786,16.465475],[80.507794,16.465476],[80.507826,16.465475],[80.507827,16.465495],[80.507829,16.465503],[80.507835,16.465528],[80.507839,16.465544],[80.507847,16.465552],[80.507865,16.465569],[80.507897,16.465601],[80.507912,16.465617],[80.50792,16.46562],[80.507921,16.465613],[80.507908,16.465599],[80.507881,16.465574],[80.507874,16.465567],[80.50786,16.465553],[80.507848,16.46554],[80.507839,16.465509],[80.507837,16.465503],[80.507835,16.465496],[80.507834,16.465482],[80.507834,16.465475],[80.507843,16.465475],[80.507864,16.465474],[80.507865,16.465474],[80.50787,16.465488],[80.507875,16.465498],[80.507882,16.465509],[80.50789,16.465521],[80.507898,16.465529],[80.507913,16.465539],[80.507927,16.465544],[80.507941,16.465549],[80.507943,16.46554],[80.507932,16.465536],[80.507919,16.465531],[80.507923,16.465525],[80.507911,16.465515],[80.507908,16.465511],[80.507906,16.465503],[80.507903,16.465489],[80.507891,16.465486],[80.507879,16.465483],[80.507875,16.465474],[80.507874,16.465471],[80.507874,16.465466],[80.507873,16.465432],[80.507885,16.465442],[80.507903,16.465458],[80.507922,16.465475],[80.507928,16.465479],[80.507946,16.465487],[80.507966,16.465496],[80.50797,16.465489],[80.507944,16.465477],[80.507931,16.465471],[80.507908,16.465451],[80.507903,16.465445],[80.507885,16.46543],[80.507873,16.46542],[80.507873,16.465407]],[[80.507705,16.465474],[80.507705,16.465475],[80.507713,16.465475],[80.507729,16.465474],[80.507717,16.4655],[80.507703,16.465529],[80.507682,16.465543],[80.507671,16.46555],[80.50766,16.465527],[80.507667,16.465523],[80.507667,16.4655],[80.507669,16.465496],[80.507677,16.465483],[80.507683,16.465474],[80.507688,16.465467],[80.507691,16.465465],[80.507698,16.465459],[80.507705,16.465455],[80.507704,16.465474],[80.507705,16.465474]]]]}}]},"foodcourt":{"type":"FeatureCollection","name":"foodcourt","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508267,16.463085],[80.508339,16.463086],[80.50834,16.46302],[80.50834,16.462936],[80.508268,16.462936],[80.508267,16.463085]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508014,16.462963],[80.508086,16.462963],[80.508086,16.462896],[80.508087,16.462813],[80.508015,16.462813],[80.508014,16.462963]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508393,16.462965],[80.508466,16.462965],[80.508469,16.462815],[80.508395,16.462814],[80.508393,16.462965]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508164,16.462787],[80.508318,16.462789],[80.50832,16.462719],[80.508165,16.462717],[80.508164,16.462787]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508161,16.463054],[80.508151,16.463055],[80.508138,16.463056],[80.508127,16.463056],[80.508113,16.463055],[80.508106,16.463054],[80.508107,16.463061],[80.508108,16.463076],[80.508108,16.463089],[80.508106,16.463105],[80.508111,16.4631],[80.508122,16.463086],[80.508127,16.463082],[80.508133,16.463075],[80.50814,16.46307],[80.508144,16.463066],[80.508149,16.463062],[80.508155,16.463059],[80.508161,16.463054]]],[[[80.508161,16.463054],[80.508152,16.463065],[80.508149,16.463069],[80.508146,16.463072],[80.508143,16.463076],[80.50814,16.46308],[80.508136,16.463083],[80.50813,16.463089],[80.508125,16.463092],[80.508119,16.463097],[80.508116,16.463099],[80.508113,16.463101],[80.508112,16.463102],[80.50811,16.463103],[80.508109,16.463105],[80.508107,16.463106],[80.50812,16.463105],[80.50813,16.463104],[80.508142,16.463105],[80.508154,16.463106],[80.508161,16.463107],[80.50816,16.4631],[80.508159,16.46309],[80.508159,16.463078],[80.508159,16.463071],[80.50816,16.463063],[80.508161,16.463054]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508108,16.462809],[80.508115,16.462815],[80.508119,16.462819],[80.508123,16.462822],[80.508127,16.462825],[80.508131,16.462827],[80.508134,16.46283],[80.508137,16.462834],[80.508143,16.46284],[80.508148,16.462845],[80.508152,16.462851],[80.508155,16.462854],[80.508158,16.462856],[80.508159,16.462858],[80.50816,16.462859],[80.508161,16.462861],[80.508163,16.462862],[80.508161,16.46285],[80.508161,16.46284],[80.508161,16.462828],[80.508162,16.462818],[80.508163,16.46281],[80.508154,16.462812],[80.508143,16.462813],[80.508131,16.462813],[80.508123,16.462812],[80.508114,16.462811],[80.508108,16.462809]]],[[[80.508163,16.462862],[80.508155,16.462857],[80.508141,16.462848],[80.508136,16.462843],[80.50813,16.462837],[80.508124,16.46283],[80.508121,16.462826],[80.508117,16.462821],[80.508113,16.462815],[80.508108,16.462809],[80.508109,16.462819],[80.508111,16.462832],[80.508111,16.462843],[80.50811,16.462857],[80.508109,16.462864],[80.508116,16.462863],[80.50813,16.462862],[80.508143,16.462862],[80.508163,16.462862]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508079,16.462974],[80.508069,16.462975],[80.508055,16.462976],[80.508044,16.462976],[80.50803,16.462976],[80.508024,16.462975],[80.508025,16.462981],[80.508026,16.462996],[80.508026,16.463009],[80.508024,16.463026],[80.508028,16.46302],[80.50804,16.463007],[80.508044,16.463002],[80.508051,16.462996],[80.508058,16.46299],[80.508062,16.462986],[80.508067,16.462983],[80.508072,16.462979],[80.508079,16.462974]]],[[[80.508079,16.462974],[80.508069,16.462985],[80.508066,16.462989],[80.508064,16.462992],[80.50806,16.462997],[80.508057,16.463],[80.508054,16.463003],[80.508047,16.463009],[80.508042,16.463013],[80.508036,16.463017],[80.508033,16.463019],[80.50803,16.463021],[80.50803,16.463022],[80.508028,16.463023],[80.508026,16.463025],[80.508025,16.463027],[80.508037,16.463025],[80.508048,16.463025],[80.50806,16.463025],[80.508072,16.463026],[80.508079,16.463027],[80.508077,16.46302],[80.508077,16.46301],[80.508076,16.462998],[80.508077,16.462991],[80.508078,16.462983],[80.508079,16.462974]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508164,16.462893],[80.508154,16.462894],[80.508141,16.462895],[80.508129,16.462895],[80.508116,16.462894],[80.508109,16.462893],[80.50811,16.4629],[80.508111,16.462915],[80.508111,16.462928],[80.508109,16.462944],[80.508114,16.462939],[80.508125,16.462925],[80.508129,16.462921],[80.508136,16.462914],[80.508143,16.462908],[80.508147,16.462905],[80.508152,16.462901],[80.508158,16.462898],[80.508164,16.462893]]],[[[80.508164,16.462893],[80.508155,16.462904],[80.508152,16.462908],[80.508149,16.462911],[80.508145,16.462915],[80.508142,16.462918],[80.508139,16.462922],[80.508133,16.462927],[80.508127,16.462931],[80.508122,16.462935],[80.508119,16.462938],[80.508116,16.46294],[80.508115,16.462941],[80.508113,16.462942],[80.508112,16.462943],[80.50811,16.462945],[80.508122,16.462944],[80.508133,16.462943],[80.508145,16.462943],[80.508157,16.462945],[80.508164,16.462946],[80.508163,16.462938],[80.508162,16.462929],[80.508162,16.462917],[80.508162,16.46291],[80.508163,16.462902],[80.508164,16.462893]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508107,16.462972],[80.508108,16.462982],[80.508109,16.462995],[80.508109,16.463007],[80.508108,16.46302],[80.508107,16.463027],[80.508114,16.463026],[80.508129,16.463025],[80.508142,16.463025],[80.508161,16.463026],[80.508153,16.46302],[80.508139,16.463011],[80.508135,16.463007],[80.508128,16.463],[80.508123,16.462993],[80.508119,16.462989],[80.508115,16.462984],[80.508112,16.462978],[80.508107,16.462972]]],[[[80.508107,16.462972],[80.508113,16.462978],[80.508118,16.462982],[80.508122,16.462985],[80.508125,16.462988],[80.508129,16.462991],[80.508133,16.462994],[80.508136,16.462997],[80.508141,16.463003],[80.508146,16.463008],[80.508151,16.463014],[80.508154,16.463017],[80.508156,16.46302],[80.508158,16.463021],[80.508158,16.463022],[80.508159,16.463024],[80.508161,16.463026],[80.50816,16.463013],[80.508159,16.463003],[80.50816,16.462991],[80.508161,16.462981],[80.508161,16.462974],[80.508152,16.462975],[80.508141,16.462976],[80.508129,16.462976],[80.508121,16.462975],[80.508113,16.462974],[80.508107,16.462972]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508277,16.462807],[80.508278,16.462817],[80.508279,16.46283],[80.508279,16.462842],[80.508279,16.462855],[80.508278,16.462862],[80.508284,16.462861],[80.508299,16.46286],[80.508312,16.46286],[80.508331,16.462861],[80.508323,16.462856],[80.50831,16.462846],[80.508305,16.462842],[80.508299,16.462835],[80.508293,16.462828],[80.508289,16.462824],[80.508286,16.462819],[80.508282,16.462814],[80.508277,16.462807]]],[[[80.508277,16.462807],[80.508283,16.462813],[80.508288,16.462818],[80.508292,16.46282],[80.508295,16.462823],[80.5083,16.462826],[80.508303,16.462829],[80.508306,16.462832],[80.508312,16.462839],[80.508316,16.462844],[80.508321,16.462849],[80.508324,16.462852],[80.508326,16.462855],[80.508328,16.462857],[80.508329,16.462858],[80.50833,16.462859],[80.508331,16.462861],[80.50833,16.462849],[80.508329,16.462838],[80.50833,16.462827],[80.508331,16.462816],[80.508332,16.462809],[80.508323,16.46281],[80.508312,16.462811],[80.5083,16.462811],[80.508291,16.46281],[80.508283,16.462809],[80.508277,16.462807]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508108,16.462809],[80.508115,16.462815],[80.508119,16.462819],[80.508123,16.462822],[80.508127,16.462825],[80.508131,16.462827],[80.508134,16.46283],[80.508137,16.462834],[80.508143,16.46284],[80.508148,16.462845],[80.508152,16.462851],[80.508155,16.462854],[80.508158,16.462856],[80.508159,16.462858],[80.50816,16.462859],[80.508161,16.462861],[80.508163,16.462862],[80.508161,16.46285],[80.508161,16.46284],[80.508161,16.462828],[80.508162,16.462818],[80.508163,16.46281],[80.508154,16.462812],[80.508143,16.462813],[80.508131,16.462813],[80.508123,16.462812],[80.508114,16.462811],[80.508108,16.462809]]],[[[80.508163,16.462862],[80.508155,16.462857],[80.508141,16.462848],[80.508136,16.462843],[80.50813,16.462837],[80.508124,16.46283],[80.508121,16.462826],[80.508117,16.462821],[80.508113,16.462815],[80.508108,16.462809],[80.508109,16.462819],[80.508111,16.462832],[80.508111,16.462843],[80.50811,16.462857],[80.508109,16.462864],[80.508116,16.462863],[80.50813,16.462862],[80.508143,16.462862],[80.508163,16.462862]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508164,16.462893],[80.508154,16.462894],[80.508141,16.462895],[80.508129,16.462895],[80.508116,16.462894],[80.508109,16.462893],[80.50811,16.4629],[80.508111,16.462915],[80.508111,16.462928],[80.508109,16.462944],[80.508114,16.462939],[80.508125,16.462925],[80.508129,16.462921],[80.508136,16.462914],[80.508143,16.462908],[80.508147,16.462905],[80.508152,16.462901],[80.508158,16.462898],[80.508164,16.462893]]],[[[80.508164,16.462893],[80.508155,16.462904],[80.508152,16.462908],[80.508149,16.462911],[80.508145,16.462915],[80.508142,16.462918],[80.508139,16.462922],[80.508133,16.462927],[80.508127,16.462931],[80.508122,16.462935],[80.508119,16.462938],[80.508116,16.46294],[80.508115,16.462941],[80.508113,16.462942],[80.508112,16.462943],[80.50811,16.462945],[80.508122,16.462944],[80.508133,16.462943],[80.508145,16.462943],[80.508157,16.462945],[80.508164,16.462946],[80.508163,16.462938],[80.508162,16.462929],[80.508162,16.462917],[80.508162,16.46291],[80.508163,16.462902],[80.508164,16.462893]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508022,16.46305],[80.508023,16.46306],[80.508024,16.463073],[80.508024,16.463085],[80.508024,16.463099],[80.508023,16.463105],[80.508029,16.463104],[80.508044,16.463103],[80.508057,16.463103],[80.508076,16.463104],[80.508068,16.463099],[80.508055,16.463089],[80.50805,16.463085],[80.508044,16.463078],[80.508038,16.463071],[80.508034,16.463067],[80.508031,16.463062],[80.508027,16.463057],[80.508022,16.46305]]],[[[80.508022,16.46305],[80.508028,16.463056],[80.508033,16.463061],[80.508037,16.463064],[80.50804,16.463066],[80.508045,16.463069],[80.508048,16.463072],[80.508051,16.463075],[80.508057,16.463082],[80.508062,16.463087],[80.508066,16.463092],[80.508069,16.463095],[80.508071,16.463098],[80.508073,16.4631],[80.508074,16.463101],[80.508075,16.463102],[80.508076,16.463104],[80.508075,16.463092],[80.508075,16.463081],[80.508075,16.46307],[80.508076,16.463059],[80.508077,16.463052],[80.508068,16.463054],[80.508057,16.463054],[80.508045,16.463054],[80.508036,16.463054],[80.508028,16.463052],[80.508022,16.46305]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508193,16.462889],[80.508194,16.462899],[80.508195,16.462912],[80.508195,16.462924],[80.508194,16.462938],[80.508193,16.462944],[80.5082,16.462943],[80.508215,16.462942],[80.508228,16.462942],[80.508247,16.462943],[80.508239,16.462938],[80.508225,16.462928],[80.508221,16.462924],[80.508214,16.462917],[80.508208,16.46291],[80.508205,16.462906],[80.508201,16.462901],[80.508198,16.462896],[80.508193,16.462889]]],[[[80.508193,16.462889],[80.508199,16.462895],[80.508204,16.4629],[80.508208,16.462903],[80.508211,16.462905],[80.508215,16.462908],[80.508218,16.462911],[80.508222,16.462914],[80.508227,16.462921],[80.508232,16.462926],[80.508237,16.462931],[80.50824,16.462934],[80.508242,16.462937],[80.508243,16.462939],[80.508244,16.46294],[80.508245,16.462941],[80.508247,16.462943],[80.508246,16.462931],[80.508245,16.46292],[80.508246,16.462909],[80.508247,16.462898],[80.508247,16.462891],[80.508238,16.462893],[80.508227,16.462893],[80.508215,16.462893],[80.508207,16.462893],[80.508199,16.462891],[80.508193,16.462889]]]]}},{"type":"Feature","properties":{"Id":0},"geometry":{"type":"MultiPolygon","coordinates":[[[[80.508246,16.462808],[80.508236,16.462809],[80.508223,16.462811],[80.508211,16.462811],[80.508198,16.46281],[80.508191,16.462809],[80.508192,16.462816],[80.508193,16.46283],[80.508193,16.462843],[80.508191,16.46286],[80.508195,16.462854],[80.508207,16.462841],[80.508211,16.462836],[80.508218,16.46283],[80.508225,16.462824],[80.508229,16.462821],[80.508234,16.462817],[80.508239,16.462813],[80.508246,16.462808]]],[[[80.508246,16.462808],[80.508236,16.462819],[80.508234,16.462823],[80.508231,16.462826],[80.508227,16.462831],[80.508224,16.462834],[80.508221,16.462837],[80.508214,16.462843],[80.508209,16.462847],[80.508204,16.462851],[80.5082,16.462853],[80.508197,16.462856],[80.508197,16.462856],[80.508195,16.462858],[80.508193,16.462859],[80.508192,16.462861],[80.508204,16.46286],[80.508215,16.462859],[80.508227,16.462859],[80.508239,16.462861],[80.508246,16.462861],[80.508245,16.462854],[80.508244,16.462844],[80.508244,16.462833],[80.508244,16.462825],[80.508245,16.462817],[80.508246,16.462808]]]]}}]}};
+const BUILD_DATE = "13 Jun 2026";
+
+const norm = s => (s==null?"":String(s)).trim();
+const lc   = s => norm(s).toLowerCase();
+
+const state = {rooms:{}, equipByRoom:{}, contacts:{}, markers:{}, pulses:null, building:null, floor:null, selectedCode:null,
+               campusBounds:[], homeBounds:null, lastUpdated:null, buildings:null};
+let map;
+let currentQuery="";
+const MODE = "user";
+
+init();
+
+async function loadConfig(){
+  try{
+    const r = await fetch("data/config.json");
+    if(!r.ok) return;
+    const cfg = await r.json();
+    if(cfg.logo) document.getElementById("collegeLogo").src = cfg.logo;
+    if(cfg.collegeName) document.getElementById("collegeName").textContent = cfg.collegeName;
+    if(cfg.centreName) document.getElementById("centreName").textContent = cfg.centreName;
+    if(cfg.appName || cfg.centreName || cfg.collegeName){
+      document.title = cfg.appName || "Campus Inventory Management Tool";
+    }
+  }catch(e){ console.warn("config fallback:", e); }
+}
+
+async function init(){
+  await loadConfig();
+  let data, demo=false;
+  try{ data = await loadLive(); }
+  catch(e){ console.warn("fallback:",e); data=FALLBACK; demo=true; document.getElementById("banner").classList.add("show"); }
+  ingest(data);
+  buildMap();
+  buildSelectors();
+  setUpdated(demo);
+  bindUI();
+  runSearch("");
+  document.getElementById("foot").textContent =
+    Object.keys(state.rooms).length+" rooms · "+
+    Object.values(state.equipByRoom).reduce((n,a)=>n+a.length,0)+" items"+(demo?" · demo data":"");
+}
+
+async function loadLive(){
+  const gjRes = await fetch("data/geojson/rooms_updated.geojson");
+  if(!gjRes.ok) throw new Error("geojson "+gjRes.status);
+  const gj = await gjRes.json();
+  const rooms = gj.features.map(f=>({room:f.properties.Room, floor:f.properties.Floor,
+    building:f.properties.Building, lat:f.geometry.coordinates[1], lng:f.geometry.coordinates[0]}));
+
+  const eqRes = await fetch("data/csv/equipment.csv");
+  if(!eqRes.ok) throw new Error("equipment "+eqRes.status);
+  state.lastUpdated = eqRes.headers.get("last-modified");
+  const equipment = Papa.parse(await eqRes.text(),{header:true,skipEmptyLines:true}).data
+    .map(r=>({room:r.Room, building:r.Building, equipment:r.Equipment, po:r.PO_Link, photo:r.Photo_Link, sop:r.SOP_Link,
+      lastCal:r.Last_Calibrated, nextCal:(r.Next_Calibration_Due||r.Maintenance_Due),
+      department:(r.Responsible_Department||r.Department), faculty:(r.Faculty_Name||r["Faculty Name"]||r["In-Charge"]), facultyEmail:(r.Faculty_Email||r["Faculty Email"]),
+      amcDue:(r.AMC_Renewal_Due||r.AMC_Due), serviceDue:(r.Service_Due||r.Maintenance_Due),
+      purchased:r.Purchase_Date, cost:(r.Cost||r.Value), vendor:r.Vendor,
+      warranty:r.Warranty_Until, funding:(r.Funding_Source||r.Grant)})).filter(x=>norm(x.room));
+
+  const cRes = await fetch("data/csv/contacts.csv");
+  if(!cRes.ok) throw new Error("contacts "+cRes.status);
+  const contacts = Papa.parse(await cRes.text(),{header:true,skipEmptyLines:true}).data
+    .map(r=>({room:r.Room, building:r.Building, inCharge:r["In-Charge"], mobile:r.Mobile, email:r.Email})).filter(x=>norm(x.room));
+
+  let buildings=null;
+  try{ const bRes=await fetch("data/geojson/buildings.geojson"); if(bRes.ok) buildings=await bRes.json(); }catch(e){ buildings=null; }
+
+  return {rooms, equipment, contacts, buildings};
+}
+
+
+const MASTER_FIELD_SPECS = [
+  ["materialCode","Material code"], ["materialDescription","Material description"], ["shortDescription","Short description"],
+  ["materialType","Material type"], ["materialGroup","Material group"], ["materialCategory","Material category"],
+  ["brandMake","Brand/Make"], ["modelNumber","Model number"], ["vendorCode","Vendor code"],
+  ["purchaseUom","Purchase unit (UOM)"], ["standardLeadTime","Standard lead time"], ["contractReference","Contract reference"],
+  ["valuationClass","Valuation class"], ["accountAssignmentCategory","Account assignment category"], ["costCenter","Cost center"],
+  ["assetCategory","Asset category"], ["priceControlMethod","Price control method"], ["taxCode","Tax code"],
+  ["hsnSacCode","HSN/SAC code"], ["inventoryManaged","Inventory managed"], ["storageInstallationLocation","Storage / installation location"],
+  ["maximumStockLevel","Maximum stock level"], ["serialNumberTracking","Serial number tracking"], ["shelfLife","Shelf life"],
+  ["deliveryLocation","Delivery location"], ["approvedVendorList","Approved vendor list"], ["manufacturerPartNumber","Manufacturer part number"],
+  ["technicalSpecification","Technical specification"], ["remarks","Remarks"]
+];
+function pickField(r, names){ for(const n of names){ if(r && r[n]!=null && norm(r[n])!=="") return r[n]; } return ""; }
+function categoryForName(name){
+  const n=lc(name);
+  if(/toner|cartridge|chemical|reagent|paper|kit|breadboard/.test(n)) return {type:"Consumable",cat:"Consumable"};
+  if(/service|amc|calibration/.test(n)) return {type:"Service",cat:"Service"};
+  return {type:"Asset",cat:"Capital Asset"};
+}
+function inferBrand(name){
+  const n=lc(name);
+  if(/computer|desktop|workstation|server|ups|switch|projector/.test(n)) return "Dell";
+  if(/oscilloscope|function|logic|power supply/.test(n)) return "Keysight";
+  if(/microscope|centrifuge|spectrophotometer|ph meter|hot plate|stirrer/.test(n)) return "Thermo Fisher";
+  if(/3d printer|laser|cnc|lathe/.test(n)) return "Bosch";
+  return "SRMAP Standard";
+}
+function enrichEquipmentItem(it, idx){
+  const info=categoryForName(it.name);
+  const seq=String(idx||1).padStart(6,"0");
+  const room=norm(it.room)||"Central Store";
+  const dept=norm(it.department)||"Laboratory";
+  const brand=norm(it.brandMake)||inferBrand(it.name);
+  const modelBase=(norm(it.name)||"EQ").replace(/[^A-Za-z0-9]/g,"").slice(0,4).toUpperCase() || "EQ";
+  const defaults={
+    materialCode:`SRMAP-MM-${seq}`,
+    materialDescription:norm(it.materialDescription)||norm(it.name),
+    shortDescription:norm(it.shortDescription)||norm(it.name).slice(0,28),
+    materialType:info.type,
+    materialGroup:dept,
+    materialCategory:info.cat,
+    brandMake:brand,
+    modelNumber:`${modelBase}-${100+idx}`,
+    vendorCode:`VEN-${String((idx%90)+100).padStart(5,"0")}`,
+    purchaseUom:"Nos.",
+    standardLeadTime:"15 Days",
+    contractReference:`RC-2026-${dept.replace(/[^A-Za-z0-9]/g,"").slice(0,3).toUpperCase()||"LAB"}-01`,
+    valuationClass:info.cat==="Consumable"?"Lab Consumables":"Capital Equipment",
+    accountAssignmentCategory:info.type==="Asset"?"Asset":"Cost Center",
+    costCenter:dept,
+    assetCategory:info.type==="Asset"?"Laboratory Equipment":"Not Applicable",
+    priceControlMethod:"Standard Price",
+    taxCode:"GST 18%",
+    hsnSacCode:"90230090",
+    inventoryManaged:"Yes",
+    storageInstallationLocation:room,
+    maximumStockLevel:info.type==="Consumable"?"100 Nos.":"1 Nos.",
+    serialNumberTracking:info.type==="Asset"?"Yes":"No",
+    shelfLife:info.type==="Consumable"?"24 Months":"Not Applicable",
+    deliveryLocation:room,
+    approvedVendorList:"ABC Technologies, XYZ Systems",
+    manufacturerPartNumber:`${brand.replace(/[^A-Za-z0-9]/g,"").toUpperCase().slice(0,4)}-${modelBase}-${seq.slice(-3)}`,
+    technicalSpecification:"Specification sheet attached / to be updated",
+    remarks:"Demo master data; replace during final inventory validation"
+  };
+  MASTER_FIELD_SPECS.forEach(([k])=>{ if(norm(it[k])==="") it[k]=defaults[k]||""; });
+  return it;
+}
+function masterRibbonHTML(it,q){
+  const rows=MASTER_FIELD_SPECS.map(([k,label])=>norm(it[k])!==""?`<div><b>${label}</b>${hl(it[k],q||"")}</div>`:"").join("");
+  return rows?`<details class="eq-master"><summary>Material master data</summary><div class="eq-master-grid">${rows}</div></details>`:"";
+}
+
+function makeKey(building,room){ return `${norm(building)||"Unassigned"}||${norm(room)}`; }
+function resolveRoomKeys(room,building){
+  const r=norm(room); if(!r) return [];
+  const b=norm(building);
+  if(b){ const k=makeKey(b,r); return state.rooms[k] ? [k] : []; }
+  const matches=Object.entries(state.rooms).filter(([,rm])=>norm(rm.room)===r).map(([k])=>k);
+  return matches.length ? matches : [makeKey("Unassigned",r)];
+}
+function ingest(d){
+  d.rooms.forEach(r=>{
+    if(!norm(r.room)) return;
+    const key=makeKey(r.building,r.room);
+    state.rooms[key]={room:norm(r.room),floor:r.floor,lat:r.lat,lng:r.lng,building:norm(r.building)||"Unassigned"};
+  });
+  d.equipment.forEach(e=>{
+    const keys=resolveRoomKeys(e.room,e.building); if(!keys.length)return;
+    keys.forEach(c=>(state.equipByRoom[c] ??= []).push({
+      name:norm(e.equipment), po:norm(e.po), photo:norm(e.photo), sop:norm(e.sop),
+      lastCal:norm(e.lastCal), nextCal:norm(e.nextCal), department:norm(e.department), faculty:norm(e.faculty), facultyEmail:norm(e.facultyEmail),
+      amcDue:norm(e.amcDue), serviceDue:norm(e.serviceDue), purchased:norm(e.purchased),
+      cost:norm(e.cost), vendor:norm(e.vendor), warranty:norm(e.warranty), funding:norm(e.funding) }));
+  });
+  d.contacts.forEach(c=>{
+    const keys=resolveRoomKeys(c.room,c.building);
+    keys.forEach(code=>{ state.contacts[code]={inCharge:c.inCharge,mobile:c.mobile,email:c.email}; });
+  });
+  state.buildings = d.buildings || null;
+}
+
+function setUpdated(demo){
+  let txt = BUILD_DATE;
+  if(!demo && state.lastUpdated){
+    const dt=new Date(state.lastUpdated);
+    if(!isNaN(dt)) txt=dt.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
+  }
+  document.getElementById("updated").textContent = "Last updated "+txt;
+}
+
+const BASE_STYLES = {
+  greenery:     {fill:"#bcdca0",stroke:"#8fb46e",op:.85,w:0.5,z:300,legend:"Greenery"},
+  ground:       {fill:"#e6d3a3",stroke:"#cbb47c",op:.92,w:0.6,z:304,legend:"Ground (sand)"},
+  cricketground:{fill:"#a8cf8f",stroke:"#7cab66",op:.92,w:0.8,z:306,legend:"Cricket ground"},
+  runningtrack: {fill:"#cf8a63",stroke:"#a96a47",op:.92,w:0.8,z:308,legend:"Running track"},
+  design:       {fill:"#e3ddcf",stroke:"#c6bda9",op:.92,w:0.6,z:310,legend:"Plaza / paved"},
+  roadoutput:   {fill:"#bcbcbc",stroke:"#909090",op:.95,w:0.4,z:312,legend:"Roads"},
+  roads_2:      {fill:"#bcbcbc",stroke:"#909090",op:.95,w:0.4,z:313},
+  roads:        {fill:"#bcbcbc",stroke:"#909090",op:.95,w:0.4,z:314},
+  busbay:       {fill:"#a9b0b8",stroke:"#7f878f",op:.95,w:0.5,z:316,legend:"Bus bay"},
+  foodcourt:    {fill:"#efc06a",stroke:"#cf9a3f",op:.92,w:0.6,z:318,legend:"Food court"},
+};
+
+function buildMap(){
+  const pts=Object.values(state.rooms);
+  state.campusBounds=pts.map(r=>[r.lat,r.lng]);
+  map=L.map("map",{zoomControl:true,maxZoom:22});
+  map.attributionControl.setPrefix("Campus Equipment Finder");
+
+  let home=null;
+  const grow=b=>{ if(b&&b.isValid()) home = home? home.extend(b) : L.latLngBounds(b.getSouthWest(),b.getNorthEast()); };
+
+  // baked-in campus background (non-interactive), stacked by pane z-index
+  Object.entries(BASE_STYLES).forEach(([name,st])=>{
+    const data=(typeof BASE!=="undefined")?BASE[name]:null;
+    if(!data||!data.features||!data.features.length) return;
+    const pane="base-"+name; map.createPane(pane); map.getPane(pane).style.zIndex=st.z;
+    const lyr=L.geoJSON(data,{pane,interactive:false,
+      style:()=>({color:st.stroke,weight:st.w,fillColor:st.fill,fillOpacity:st.op})}).addTo(map);
+    try{ grow(lyr.getBounds()); }catch(e){}
+  });
+
+  // building footprints, above background but below room markers
+  map.createPane("buildings"); map.getPane("buildings").style.zIndex=350;
+  const bf = state.buildings && state.buildings.features;
+  if(bf && bf.length){
+    const layer=L.geoJSON(state.buildings,{pane:"buildings", style:buildingStyle,
+      onEachFeature:(feat,lyr)=>{
+        const p=feat.properties||{};
+        const label = buildingName(p) || (p.Id!=null ? "Building "+p.Id : "");
+        if(label) lyr.bindTooltip(label,{sticky:true,direction:"top",className:"bldg-label"});
+        lyr.on("mouseover",()=>lyr.setStyle({fillOpacity:1,weight:1.6}));
+        lyr.on("mouseout", ()=>lyr.setStyle(buildingStyle()));
+      }}).addTo(map);
+    try{ grow(layer.getBounds()); }catch(e){}
+  }
+
+  state.pulses=L.layerGroup().addTo(map);
+  setupGeolocation();
+  state.homeBounds = home || (state.campusBounds.length ? L.latLngBounds(state.campusBounds) : null);
+  if(state.homeBounds) map.fitBounds(state.homeBounds,{padding:[40,40],maxZoom:19});
+}
+
+let userMarker=null, accCircle=null, wantCenter=false, geoWatchStarted=false;
+const MAX_EQUIPMENT_ZOOM = 19;
+function setupGeolocation(){
+  if(!("geolocation" in navigator)) return;
+  const ctl=L.control({position:"bottomright"});
+  ctl.onAdd=()=>{ const d=L.DomUtil.create("div","locate-ctl"); d.title="Show my location";
+    d.innerHTML='<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3.4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>';
+    L.DomEvent.disableClickPropagation(d); L.DomEvent.on(d,"click",e=>{L.DomEvent.stop(e);locateMe(true);}); return d; };
+  ctl.addTo(map);
+  map.on("locationfound",e=>{
+    showUser(e.latlng,e.accuracy);
+    if(wantCenter){
+      if(state.selectedCode && state.rooms[state.selectedCode]) focusEquipment(state.selectedCode,{open:false});
+      else map.flyTo(e.latlng,Math.min(MAX_EQUIPMENT_ZOOM,Math.max(map.getZoom(),18)),{duration:.6});
+      wantCenter=false;
+    }
+  });
+  map.on("locationerror",()=>{ wantCenter=false; });
+  locateMe(false); // starts live location tracking when permission is available
+}
+function locateMe(center){
+  wantCenter=!!center;
+  try{
+    map.locate({setView:false,watch:!geoWatchStarted,enableHighAccuracy:true,maximumAge:10000,timeout:10000});
+    geoWatchStarted=true;
+  }catch(e){}
+}
+function showUser(latlng,acc){
+  if(!userMarker){
+    userMarker=L.marker(latlng,{icon:L.divIcon({className:"me",html:"<span></span>",iconSize:[0,0]}),zIndexOffset:1000,interactive:false}).addTo(map);
+    accCircle=L.circle(latlng,{radius:acc||15,color:"#2b7cff",weight:1,fillColor:"#2b7cff",fillOpacity:.12,interactive:false}).addTo(map);
+  } else { userMarker.setLatLng(latlng); accCircle.setLatLng(latlng).setRadius(acc||15); }
+}
+
+function addLegend(){ /* legend removed */ }
+
+const buildingStyle=()=>({color:"#8a6f22", weight:1, opacity:.9, fillColor:"#d8cbb0", fillOpacity:.92});
+function buildingName(p){
+  if(!p) return "";
+  const keys=["Building Name","Name","name","NAME","Building_Name","BuildingName","Building","building","BUILDING","Block","block",
+              "BLDG_NAME","bldg_name","BuildingNa","BLDGNAME","label","Label","title"];
+  for(const k of keys){ if(p[k]!=null && norm(p[k])!=="") return norm(p[k]); }
+  return "";
+}
+
+function roomBuilding(rm){ return norm(rm?.building) || "Unassigned"; }
+function sortedFloorsForBuilding(building){
+  return [...new Set(Object.values(state.rooms)
+    .filter(r=>roomBuilding(r)===building)
+    .map(r=>r.floor).filter(f=>f!=null&&norm(f)!==""))]
+    .sort((a,b)=>Number(a)-Number(b)||String(a).localeCompare(String(b)));
+}
+function buildSelectors(){
+  const bSel=document.getElementById("building");
+  const buildings=[...new Set(Object.values(state.rooms).map(roomBuilding))].sort((a,b)=>a.localeCompare(b));
+  bSel.innerHTML=buildings.map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join("");
+  state.building=buildings.includes(state.building)?state.building:buildings[0];
+  bSel.value=state.building||"";
+  buildFloorOptions();
+}
+function buildFloorOptions(){
+  const sel=document.getElementById("floor");
+  const floors=sortedFloorsForBuilding(state.building);
+  sel.innerHTML=floors.map(f=>`<option value="${esc(f)}">Floor ${esc(f)}</option>`).join("");
+  state.floor=floors.includes(state.floor)?state.floor:floors[0];
+  sel.value=state.floor||"";
+}
+function sameBuilding(b){ return norm(b)==="" || roomBuilding({building:b})===state.building; }
+function sameFloor(f){ return f==null||norm(f)===""||String(f)===String(state.floor); }
+function sameScope(rm){ return roomBuilding(rm)===state.building && sameFloor(rm.floor); }
+function setScopeSilently(building,floor){
+  state.building=norm(building)||"Unassigned";
+  document.getElementById("building").value=state.building;
+  buildFloorOptions();
+  if(floor!=null&&norm(floor)!==""){ state.floor=floor; document.getElementById("floor").value=floor; }
+}
+
+const baseStyle=()=>({radius:8,color:"#fff",weight:2.5,fillColor:"#bd9a3c",fillOpacity:1});
+const dimStyle =()=>({radius:5,color:"#fff",weight:1.5,fillColor:"#46493a",fillOpacity:.3});
+
+function showMarkers(codes,{respectScope=true}={}){
+  Object.values(state.markers).forEach(m=>map.removeLayer(m));
+  state.markers={}; state.pulses.clearLayers();
+  const pts=[];
+  codes.filter(c=>!respectScope || sameScope(state.rooms[c])).forEach(code=>{
+    const rm=state.rooms[code];
+    const m=L.circleMarker([rm.lat,rm.lng],baseStyle())
+      .bindTooltip(rm.room,{className:"room-tip",direction:"top",offset:[0,-4]}).addTo(map);
+    if(MODE==="admin"){ m.on("click",()=>{ setActiveRow(code); focusEquipment(code,{open:true}); }); }
+    else { m.bindPopup(()=>popupHTML(code),{maxWidth:300,minWidth:210}); m.on("click",()=>{ setActiveRow(code); focusEquipment(code,{open:true}); }); }
+    state.markers[code]=m; addPulse(rm); pts.push([rm.lat,rm.lng]);
+  });
+  return pts;
+}
+
+/* ----- USER view: lightweight popup (equipment names + contact only) ----- */
+function popupHTML(code){
+  const rm=state.rooms[code];
+  const contact=state.contacts[code];
+  let items=(state.equipByRoom[code]||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
+  if(activeSearchMode()==="faculty") return `<div class="pop"><h3>${esc(rm.room)}</h3><div class="floor">${rm.building?esc(rm.building)+" · ":""}Floor ${esc(rm.floor)}</div></div>`;
+  if(currentQuery){
+    const q=compactText(currentQuery);
+    const matched=items.filter(it=>compactText(it.name).includes(q));
+    if(matched.length) items=matched;
+  }
+  const faculty=norm(contact?.inCharge)||norm(items[0]?.faculty)||"In-charge not listed";
+  const mobile=norm(contact?.mobile);
+  const email=norm(contact?.email)||norm(items[0]?.facultyEmail);
+  const eqHTML = items.length
+    ? `<h4>Equipment</h4><ul>${items.map(it=>`<li><span>${esc(it.name)}</span></li>`).join("")}</ul>`
+    : `<p class="none">No matching equipment listed.</p>`;
+  return `<div class="pop"><h3>${esc(rm.room)}</h3>
+    <div class="floor">${rm.building?esc(rm.building)+" · ":""}Floor ${rm.floor!=null&&norm(rm.floor)!==""?esc(rm.floor):"—"}</div>
+    ${eqHTML}
+    <h4>Faculty In-charge</h4>
+    <div class="dt-name">${esc(faculty)}</div>
+    ${mobile?`<div class="dt-line">&#128222; <a class="contact-action" href="${contactHref('tel',mobile)}" data-contact-action="tel">${esc(mobile)}</a></div>`:""}
+    ${email?`<div class="dt-line">&#9993; <a class="contact-action" href="${contactHref('mail',email)}" data-contact-action="mail">${esc(email)}</a></div>`:""}
+  </div>`;
+}
+
+/* ----- ADMIN view: full-detail right-side panel ----- */
+function openDetail(code){
+  const el=document.getElementById("detail");
+  el.innerHTML=detailHTML(code);
+  el.hidden=false; el.scrollTop=0;
+  const cb=el.querySelector(".dt-close"); if(cb) cb.onclick=closeDetail;
+}
+function closeDetail(){ const el=document.getElementById("detail"); if(el){ el.hidden=true; el.innerHTML=""; } }
+
+function detailHTML(code){
+  const rm=state.rooms[code];
+  let items=(state.equipByRoom[code]||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
+  const c=state.contacts[code];
+  if(currentQuery){
+    const q=currentQuery.replace(/\s+/g,"");
+    const m=items.filter(it=>searchText(it,rm,c).includes(q));
+    if(m.length) items=m;
+  }
+  const loc=`${rm.building?esc(rm.building)+" · ":""}Floor ${rm.floor!=null&&norm(rm.floor)!==""?esc(rm.floor):"\u2014"}`;
+  const eqHTML = items.length
+    ? `<ul class="dt-list">${items.map(itemHTML).join("")}</ul>`
+    : `<p class="dt-none">No equipment listed yet.</p>`;
+  const cHTML = c
+    ? `<div class="dt-contact"><h4>In-charge</h4><div class="dt-name">${esc(c.inCharge||"In-charge")}</div>
+         ${c.mobile?`<div class="dt-line">&#128222; <a class="contact-action" href="${contactHref('tel',c.mobile)}" data-contact-action="tel">${esc(c.mobile)}</a></div>`:""}
+         ${c.email?`<div class="dt-line">&#9993; <a class="contact-action" href="${contactHref('mail',c.email)}" data-contact-action="mail">${esc(c.email)}</a></div>`:""}</div>`
+    : `<div class="dt-contact"><h4>In-charge</h4><p class="dt-none">No contact listed.</p></div>`;
+  return `<div class="dt-head"><div><h3>${esc(rm.room)}</h3><div class="dt-loc">${loc}</div></div>
+      <button class="dt-close" aria-label="Close">&times;</button></div>
+    <div class="dt-body"><h4>Equipment <span class="dt-ct">${items.length}</span></h4>${eqHTML}${cHTML}</div>`;
+}
+
+function itemHTML(it){
+  const link=(href,label)=> norm(href)!==""?`<a class="dt-link" href="${esc(href)}" target="_blank" rel="noopener">${label} &#8599;</a>`:"";
+  const links=[link(it.photo,"Photo"),link(it.sop,"SOP"),link(it.po,"PO")].filter(Boolean).join("");
+  const row=(label,val,extra="")=> norm(val)!==""?`<div class="dt-spec"><dt>${label}</dt><dd>${esc(val)}${extra}</dd></div>`:"";
+  let overdue="";
+  if(norm(it.nextCal)!==""){ const d=new Date(it.nextCal); if(!isNaN(d)&&d<new Date()) overdue=` <span class="dt-flag">overdue</span>`; }
+  const specs=[
+    row("Responsible department",it.department),
+    row("Faculty in-charge",it.faculty),
+    row("Faculty email",it.facultyEmail),
+    row("Last calibrated",it.lastCal),
+    row("Calibration due",it.nextCal,overdue),
+    row("Purchased",it.purchased),
+    row("Cost",it.cost),
+    row("Vendor",it.vendor),
+    row("Warranty until",it.warranty),
+    row("Funding",it.funding),
+  ].join("");
+  const masterHTML=masterRibbonHTML(it,currentQuery||"");
+  const linksHTML=links?`<div class="dt-links">${links}</div>`:"";
+  const specsHTML=specs?`<dl class="dt-specs">${specs}</dl>`:`<p class="dt-none sm">No details recorded yet.</p>`;
+  return `<li class="dt-item"><div class="dt-ename">${esc(it.name)}</div>${linksHTML}${specsHTML}${masterHTML}</li>`;
+}
+
+function compactText(v){ return lc(v).replace(/[^a-z0-9]+/g,""); }
+function searchText(it, rm, contact){
+  return compactText([
+    it.name,it.department,it.faculty,it.facultyEmail,
+    it.vendor,it.funding,it.assetId,it.id,
+    rm.room,roomBuilding(rm),roomBuilding(rm)+rm.room,
+    contact?.inCharge,contact?.email
+  ].filter(Boolean).join(" "));
+}
+function activeSearchMode(){ return document.getElementById("searchMode")?.value || "equipment"; }
+function itemMatchesMode(it, rm, contact, q, rawQ, mode){
+  if(mode==="faculty") return lc(contact?.inCharge).includes(rawQ) || lc(it.faculty).includes(rawQ);
+  if(mode==="room") return roomMatches(q, rawQ, rm);
+  return compactText(it.name).includes(q);
+}
+function roomMatches(q, rawQ, rm){
+  const roomToken=compactText(rm.room||"");
+  const buildingRoomToken=compactText(roomBuilding(rm)+rm.room);
+  const buildingShort=compactText(roomBuilding(rm).replace(/block|building|lab/gi,""));
+  const roomNumberOnly=compactText((rm.room||"").replace(/[^0-9]/g,""));
+  const friendlyRoomToken=buildingShort+roomNumberOnly;
+  return roomToken.includes(q)||buildingRoomToken.includes(q)||friendlyRoomToken.includes(q)||lc(roomBuilding(rm)).includes(rawQ);
+}
+
+/* ---------- user search: equipment, faculty, or room number, campus-wide ---------- */
+function runSearch(raw){
+  const rawQ=lc(raw);
+  const q=compactText(rawQ);
+  currentQuery=rawQ;
+  const mode=activeSearchMode();
+  const results=document.getElementById("results");
+  const count=document.getElementById("count");
+
+  if(!q){
+    showMarkers([]);
+    if(state.homeBounds) map.fitBounds(state.homeBounds,{padding:[60,60],maxZoom:19});
+    closeDetail();
+    count.textContent="Ready";
+    results.innerHTML="";
+    return;
+  }
+
+  const hits=[];
+  Object.entries(state.rooms).forEach(([code,rm])=>{
+    const contact=state.contacts[code];
+    const items=state.equipByRoom[code]||[];
+    let matchedItems=[];
+    if(mode==="room"){
+      matchedItems = roomMatches(q, rawQ, rm) ? items : [];
+    } else {
+      matchedItems = items.filter(it=>itemMatchesMode(it, rm, contact, q, rawQ, mode));
+    }
+    if(matchedItems.length || (mode==="room" && roomMatches(q, rawQ, rm))){
+      hits.push({code, floor:rm.floor, building:roomBuilding(rm), items: matchedItems});
+    }
+  });
+
+  if(!hits.length){
+    showMarkers([]);
+    count.innerHTML="<b>0</b> matches";
+    const label=mode==="faculty"?"faculty name":(mode==="room"?"room number":"equipment");
+    results.innerHTML=`<div class="empty"><span class="big">Nothing found</span>No ${label} matches <b>${esc(raw)}</b>.<br>Check the spelling, or clear the search.</div>`;
+    return;
+  }
+
+  const allCodes=hits.map(h=>h.code);
+  const pts=showMarkers(allCodes,{respectScope:false});
+  if(pts.length===1){ focusEquipment(allCodes[0],{open:mode==="equipment"}); }
+  else if(pts.length){ map.flyToBounds(pts,{padding:[80,80],maxZoom:MAX_EQUIPMENT_ZOOM,duration:.6}); }
+
+  hits.sort((a,b)=>String(a.building).localeCompare(String(b.building))||String(a.floor).localeCompare(String(b.floor))||String(state.rooms[a.code]?.room||a.code).localeCompare(String(state.rooms[b.code]?.room||b.code)));
+  count.innerHTML=`<b>${hits.length}</b> room${hits.length>1?"s":""} found across campus`;
+  results.innerHTML=hits.map(h=>rowHTML(h.code,h.items,q,false,mode)).join("");
+  wireRows();
+}
+
+function promptHTML(){
+  return `<div class="empty"><span class="big">Find any instrument on campus</span>
+    Start typing to locate equipment and its room, and see who's in charge.
+    <div class="ex">
+      <button data-q="oscilloscope">oscilloscope</button>
+      <button data-q="3d printer">3d printer</button>
+      <button data-q="microscope">microscope</button>
+    </div></div>`;
+}
+
+function rowHTML(code, items, q, offFloor, mode=activeSearchMode()){
+  const c=state.contacts[code]; const rm=state.rooms[code];
+  const fl=`<span class="fl">${esc(roomBuilding(rm))} · Floor ${esc(rm.floor)} · ${esc(rm.room)}</span>`;
+  if(mode==="faculty"){
+    const faculty=norm(c?.inCharge)||norm(items[0]?.faculty)||"In-charge not listed";
+    return `<div class="room-result faculty-only" data-code="${code}"><button class="row" type="button" data-code="${code}" aria-expanded="false"><span class="code">${esc(rm.room)}</span>
+      <span class="meta"><span class="eq">${hl(faculty,currentQuery||q)}</span></span>${fl}<span class="chev">›</span></button></div>`;
+  }
+  if(mode==="room"){
+    const roomLabel=[roomBuilding(rm), `Floor ${rm.floor}`, rm.room].filter(Boolean).join(" · ");
+    const contactName=norm(c?.inCharge)||norm(items[0]?.faculty)||"In-charge not listed";
+    return `<div class="room-result faculty-only" data-code="${code}"><button class="row" type="button" data-code="${code}" aria-expanded="false"><span class="code">${hl(rm.room,currentQuery||q)}</span>
+      <span class="meta"><span class="eq">${hl(roomLabel,currentQuery||q)}</span><span class="sub">${esc(contactName)}</span></span>${fl}<span class="chev">›</span></button></div>`;
+  }
+  const names=items.map(it=>it.name);
+  const shown=names.slice(0,4).map(n=>hl(n,currentQuery||q)).join(", ")+(names.length>4?` +${names.length-4} more`:"");
+  const cards=items.map(it=>miniEquipmentCard(it,currentQuery||q)).join("");
+  return `<div class="room-result" data-code="${code}"><button class="row" type="button" data-code="${code}" aria-expanded="false"><span class="code">${esc(rm.room)}</span>
+    <span class="meta"><span class="eq">${shown||"&mdash;"}</span></span>${fl}<span class="chev">▾</span></button>
+    <div class="room-equipment">${cards}</div></div>`;
+}
+
+function miniEquipmentCard(it,q){
+  const line=(label,val)=> norm(val)!==""?`<div><b>${label}</b>${hl(val,q)}</div>`:"";
+  return `<div class="mini-eq-card"><div class="mini-eq-title">${hl(it.name,q)}</div>
+    <div class="mini-eq-grid">
+      ${line("Department",it.department)}
+      ${line("Warranty",it.warranty)}
+      ${line("Calibration due",it.nextCal)}
+      ${line("AMC due",it.amcDue)}
+      ${line("Service due",it.serviceDue)}
+      ${line("Vendor",it.vendor)}
+      ${line("Cost",it.cost)}
+    </div></div>`;
+}
+
+function wireRows(){
+  document.querySelectorAll(".room-result .row").forEach(b=>b.addEventListener("click",()=>{
+    const code=b.dataset.code;
+    const mode=activeSearchMode();
+    const wrap=b.closest(".room-result");
+    if(mode==="faculty" || mode==="room"){
+      setActiveRow(code); focusEquipment(code,{open:false}); return;
+    }
+    const willOpen=!wrap.classList.contains("open");
+    document.querySelectorAll(".room-result").forEach(x=>{ if(x!==wrap){ x.classList.remove("open"); const rb=x.querySelector(".row"); if(rb) rb.setAttribute("aria-expanded","false"); }});
+    wrap.classList.toggle("open",willOpen);
+    b.setAttribute("aria-expanded",willOpen?"true":"false");
+    setActiveRow(code); focusEquipment(code,{open:true});
+  }));
+}
+function wireExamples(){
+  document.querySelectorAll(".ex button").forEach(b=>b.addEventListener("click",()=>{
+    const q=b.dataset.q; const inp=document.getElementById("q"); inp.value=q; runSearch(q); inp.focus();
+  }));
+}
+function setActiveRow(code){ document.querySelectorAll(".room-result").forEach(r=>r.classList.toggle("active",r.dataset.code===code)); }
+function focusEquipment(code,{open=true}={}){
+  const r=state.rooms[code];
+  if(!r) return;
+  state.selectedCode=code;
+  const eq=L.latLng(r.lat,r.lng);
+  const pts=[eq];
+  if(userMarker) pts.push(userMarker.getLatLng());
+
+  if(pts.length>1){
+    map.flyToBounds(L.latLngBounds(pts),{padding:[90,90],maxZoom:MAX_EQUIPMENT_ZOOM,duration:.55});
+  }else{
+    map.flyTo(eq,Math.min(MAX_EQUIPMENT_ZOOM,Math.max(map.getZoom(),18)),{duration:.55});
+    locateMe(false);
+  }
+  if(open) openPopupSoon(code);
+}
+
+function addPulse(r){ L.marker([r.lat,r.lng],{icon:L.divIcon({className:"pulse",html:"<span></span>",iconSize:[0,0]}),interactive:false,keyboard:false}).addTo(state.pulses); }
+function openPopupSoon(code){
+  if(MODE==="admin"){ openDetail(code); return; }
+  setTimeout(()=>state.markers[code]&&state.markers[code].openPopup(),350);
+}
+
+function initPanelResize(){
+  const stage=document.querySelector(".stage");
+  const resizer=document.getElementById("panelResizer");
+  if(!stage||!resizer) return;
+  const saved=Number(localStorage.getItem("equipmentFinderPanelWidth")||0);
+  if(saved){
+    const max=Math.min(720,Math.max(320,window.innerWidth-360));
+    stage.style.setProperty("--panel-w",Math.min(Math.max(saved,320),max)+"px");
+  }
+  let startX=0,startW=0,dragging=false;
+  function move(clientX){
+    const max=Math.min(720,Math.max(320,window.innerWidth-360));
+    const next=Math.min(Math.max(startW+(clientX-startX),320),max);
+    stage.style.setProperty("--panel-w",next+"px");
+    if(window.map&&typeof map.invalidateSize==="function") map.invalidateSize();
+  }
+  resizer.addEventListener("pointerdown",e=>{
+    if(window.innerWidth<=760) return;
+    dragging=true; startX=e.clientX; startW=stage.querySelector(".panel").getBoundingClientRect().width;
+    resizer.classList.add("dragging"); resizer.setPointerCapture(e.pointerId);
+  });
+  resizer.addEventListener("pointermove",e=>{ if(dragging) move(e.clientX); });
+  function end(e){
+    if(!dragging) return; dragging=false; resizer.classList.remove("dragging");
+    const w=Math.round(stage.querySelector(".panel").getBoundingClientRect().width);
+    localStorage.setItem("equipmentFinderPanelWidth",String(w));
+    if(window.map&&typeof map.invalidateSize==="function") setTimeout(()=>map.invalidateSize(),60);
+  }
+  resizer.addEventListener("pointerup",end);
+  resizer.addEventListener("pointercancel",end);
+  window.addEventListener("resize",()=>{ if(window.map&&typeof map.invalidateSize==="function") map.invalidateSize(); });
+}
+
+function cleanPhone(value){
+  return norm(value).replace(/[^0-9+]/g,"");
+}
+function cleanEmail(value){
+  return norm(value).replace(/\s+/g,"");
+}
+function contactHref(type,value){
+  if(type==="tel"){
+    const phone=cleanPhone(value);
+    return phone?`tel:${esc(phone)}`:"#";
+  }
+  const email=cleanEmail(value);
+  return email?`mailto:${esc(email)}`:"#";
+}
+function mailtoLink(to, cc="", subject="", body=""){
+  const params=[];
+  if(cc) params.push(`cc=${encodeURIComponent(cc)}`);
+  if(subject) params.push(`subject=${encodeURIComponent(subject)}`);
+  if(body) params.push(`body=${encodeURIComponent(body)}`);
+  return `mailto:${cleanEmail(to)}${params.length?"?"+params.join("&"):""}`;
+}
+function webmailComposeUrl(kind,to,cc="",subject="",body=""){
+  const params=new URLSearchParams();
+  if(kind==="gmail"){
+    params.set("view","cm"); params.set("fs","1"); params.set("to",to||"");
+    if(cc) params.set("cc",cc); if(subject) params.set("su",subject); if(body) params.set("body",body);
+    return `https://mail.google.com/mail/?${params.toString()}`;
+  }
+  params.set("to",to||""); if(cc) params.set("cc",cc); if(subject) params.set("subject",subject); if(body) params.set("body",body);
+  return `https://outlook.office.com/mail/deeplink/compose?${params.toString()}`;
+}
+async function copyEmailAddress(email){
+  try{ await navigator.clipboard.writeText(email); alert("Email address copied."); }
+  catch(e){ prompt("Copy this email address:",email); }
+}
+function showSimpleEmailChooser(email){
+  const existing=document.getElementById("emailChooserOverlay");
+  if(existing) existing.remove();
+  const overlay=document.createElement("div");
+  overlay.id="emailChooserOverlay";
+  overlay.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center;padding:18px;";
+  overlay.innerHTML=`<div role="dialog" aria-modal="true" style="width:min(480px,96vw);background:#fff;border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.28);padding:18px;font-family:Calibri,Arial,sans-serif;color:#172033;">
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px;">
+      <div><div style="font-weight:800;font-size:26px;">Choose email app</div><div style="font-size:21px;color:#586274;margin-top:4px;">Email will be loaded in the To field.</div></div>
+      <button type="button" data-close-email-chooser style="border:0;background:#eef1f5;border-radius:10px;padding:6px 10px;cursor:pointer;font-weight:700;">×</button>
+    </div>
+    <div style="font-size:21px;background:#f7f8fb;border:1px solid #e5e8ef;border-radius:12px;padding:10px;margin:10px 0 14px;line-height:1.5;"><b>To:</b> ${esc(email||"")}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;">
+      <button type="button" data-email-action="default" style="padding:11px 12px;border-radius:12px;border:1px solid #ccd3df;background:#fff;cursor:pointer;font-weight:700;">Default mail app</button>
+      <button type="button" data-email-action="gmail" style="padding:11px 12px;border-radius:12px;border:1px solid #ccd3df;background:#fff;cursor:pointer;font-weight:700;">Gmail</button>
+      <button type="button" data-email-action="outlook" style="padding:11px 12px;border-radius:12px;border:1px solid #ccd3df;background:#fff;cursor:pointer;font-weight:700;">Outlook</button>
+      <button type="button" data-email-action="copy" style="padding:11px 12px;border-radius:12px;border:1px solid #ccd3df;background:#fff;cursor:pointer;font-weight:700;">Copy email</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click",e=>{
+    if(e.target===overlay || e.target.closest("[data-close-email-chooser]")){ overlay.remove(); return; }
+    const action=e.target.closest("[data-email-action]")?.dataset.emailAction;
+    if(!action) return;
+    if(action==="default") openContactHref(mailtoLink(email));
+    if(action==="gmail") window.open(webmailComposeUrl("gmail",email),"_blank","noopener");
+    if(action==="outlook") window.open(webmailComposeUrl("outlook",email),"_blank","noopener");
+    if(action==="copy") copyEmailAddress(email);
+    if(action!=="copy") overlay.remove();
+  });
+}
+function openContactHref(href){
+  if(!href||href==="#") return;
+  const a=document.createElement("a");
+  a.href=href;
+  a.style.display="none";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>a.remove(),250);
+}
+function bindContactActions(){
+  document.addEventListener("click",e=>{
+    const a=e.target.closest("a.contact-action");
+    if(!a) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if(a.dataset.contactAction==="mail"){
+      const email=cleanEmail(a.textContent||a.getAttribute("href").replace(/^mailto:/i,""));
+      if(email) showSimpleEmailChooser(email);
+      return;
+    }
+    openContactHref(a.getAttribute("href"));
+  },true);
+}
+
+function bindUI(){
+  initPanelResize();
+  bindContactActions();
+  const q=document.getElementById("q"); let t;
+  q.addEventListener("input",()=>{clearTimeout(t);t=setTimeout(()=>runSearch(q.value),140);});
+  document.getElementById("clear").addEventListener("click",()=>{q.value="";runSearch("");q.focus();});
+  document.getElementById("searchMode").addEventListener("change",()=>runSearch(q.value));
+  document.getElementById("building").addEventListener("change",e=>{state.building=e.target.value;buildFloorOptions();runSearch(q.value);});
+  document.getElementById("floor").addEventListener("change",e=>{state.floor=e.target.value;runSearch(q.value);});
+}
+
+function esc(s){return norm(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function hl(s,q){ s=norm(s); if(!q) return esc(s); const i=lc(s).indexOf(q); if(i<0)return esc(s);
+  return esc(s.slice(0,i))+"<mark>"+esc(s.slice(i,i+q.length))+"</mark>"+esc(s.slice(i+q.length)); }
+</script>
+</body>
+</html>

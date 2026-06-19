@@ -1,0 +1,32 @@
+Subject: Equipment Maintenance Alert - {{FACULTY_NAME}}
+
+Dear Dr. {{FACULTY_NAME}},
+
+Greetings.
+
+This is to inform you about the warranty and maintenance status of the equipment currently assigned to your laboratory/section.
+
+The following equipment require your attention:
+
+## Equipment Details
+
+{{EQUIPMENT_DETAILS}}
+
+Please review the status of the above equipment and take any necessary action regarding:
+
+• Maintenance
+• Calibration
+• AMC renewal
+• Servicing
+• Repair
+• Replacement
+
+If any equipment information is incorrect or requires updating, kindly inform the administration.
+
+Thank you for your cooperation.
+
+Regards,
+
+Asset Management Team
+SRM University-AP
+maintenance@srmap.edu.in
